@@ -370,7 +370,16 @@ void throw_bad_alloc() {
 	a[0] = 1;
 }
 
+so_hook hooks[1];
+
+int SetTexture(void *a1, unsigned int a2, int a3) {
+	*(int *)a3 = *(int *)a3 - 4;
+	printf("SetTexture(%x, %x, %x, %x)\n", a1, a2, a3, *(int *)a3);
+	return SO_CONTINUE(int, hooks[0], a1, a2, a3);
+}
+
 void patch_game(void) {
+	hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
 }
 
 extern void *__aeabi_atexit;
@@ -590,7 +599,7 @@ void *SDL_GL_GetProcAddress_fake(const char *symbol) {
 
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
 	printf("readlink(%s)\n", pathname);
-	strncpy(buf, "ux0:data/fahrenheit/", bufsiz);
+	strncpy(buf, "ux0:data/fahrenheit/libFahrenheit.so", bufsiz);
 	return strlen(buf);
 }
 
@@ -1231,7 +1240,7 @@ int crasher(unsigned int argc, void *argv) {
   }
 }
 
-/*void abort_handler(KuKernelAbortContext *ctx) {
+void abort_handler(KuKernelAbortContext *ctx) {
     printf("Crash Detected!!! (Abort Type: 0x%08X)\n", ctx->abortType);
     printf("-----------------\n");
     printf("PC: 0x%08X\n", ctx->pc);
@@ -1253,12 +1262,12 @@ int crasher(unsigned int argc, void *argv) {
     printf("FPSCR: 0x%08X\n", ctx->FPSCR);
     printf("FPEXC: 0x%08X\n", ctx->FPEXC);
     printf("FSR: 0x%08X\n", ctx->FSR);
-   // printf("FAR: 0x%08X\n", ctx->FAR);
+    printf("FAR: 0x%08X\n", *(&(ctx->FSR) + 4)); // Using ctx->FAR gives an error for some weird reason
     sceKernelExitProcess(0);
-}*/
+}
 
 int main(int argc, char *argv[]) {
-  //kuKernelRegisterAbortHandler(abort_handler, NULL);
+  kuKernelRegisterAbortHandler(abort_handler, NULL);
   //SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
   //sceKernelStartThread(crasher_thread, 0, NULL);	
 	
