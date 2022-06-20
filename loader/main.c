@@ -371,7 +371,6 @@ void throw_bad_alloc() {
 }
 
 void patch_game(void) {
-	hook_addr(so_symbol(&stdcpp_mod, "__cxa_throw"), (uintptr_t)&throw_bad_alloc);
 }
 
 extern void *__aeabi_atexit;
@@ -389,8 +388,6 @@ extern void *__stack_chk_fail;
 int open(const char *pathname, int flags);
 
 static int __stack_chk_guard_fake = 0x42424242;
-
-static char *__ctype_ = (char *)&_ctype_;
 
 static FILE __sF_fake[0x100][3];
 
@@ -426,12 +423,22 @@ char *obbs[2] = {
 };
 int obbs_idx = 0;
 FILE *fopen_hook(char *fname, char *mode) {
+  char real_fname[256];
   printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
   if (strlen(fname) == 0) {
 	  return fopen(obbs[obbs_idx++], mode);
   }
+  if (strstr(fname, ".ktx")) {
+	  int len = strlen(fname);
+	fname[len - 4] = 0;
+	if (!strstr(fname, "ux0:"))
+	  sprintf(real_fname, "ux0:data/fahrenheit/%s.dds", fname);
+    else
+	  sprintf(real_fname, "%s.dds", fname);
+	fname[len - 4] = '.';
+	return fopen(real_fname, mode);
+  }
   if (!strstr(fname, "ux0:")) {
-    char real_fname[256];
 	sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
 	return fopen(real_fname, mode);
   }
@@ -564,6 +571,8 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 static so_default_dynlib gl_hook[] = {
 	{"glShaderSource", (uintptr_t)&glShaderSourceHook},
 	{"glCompileShader", (uintptr_t)&ret0},
+	{"glPixelStorei", (uintptr_t)&ret0},
+	{"glBlendColor", (uintptr_t)&ret0},
 };
 static size_t gl_numhook = sizeof(gl_hook) / sizeof(*gl_hook);
 
@@ -573,12 +582,15 @@ void *SDL_GL_GetProcAddress_fake(const char *symbol) {
 			return (void *)gl_hook[i].func;
 		}
 	}
-	return vglGetProcAddress(symbol);
+	void *r = vglGetProcAddress(symbol);
+	if (!r)
+		printf("Cannot find symbol %s\n", symbol);
+	return r;
 }
 
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
 	printf("readlink(%s)\n", pathname);
-	strncpy(buf, "ux0:data/fahrenheit", bufsiz);
+	strncpy(buf, "ux0:data/fahrenheit/", bufsiz);
 	return strlen(buf);
 }
 
@@ -991,7 +1003,7 @@ void *dlsym_hook( void *handle, const char *symbol) {
 		}
 	}
 	
-	printf("Not Found!\n", symbol);
+	printf("Not Found!\n");
 	return NULL;
 }
 
@@ -1118,8 +1130,6 @@ int GetBooleanField(void *env, void *obj, int fieldID) {
 }
 
 void *CallObjectMethodV(void *env, void *obj, int methodID, uintptr_t *args) {
-  int lang = -1;
-
   switch (methodID) {
   default:
     return NULL;
@@ -1221,9 +1231,36 @@ int crasher(unsigned int argc, void *argv) {
   }
 }
 
+/*void abort_handler(KuKernelAbortContext *ctx) {
+    printf("Crash Detected!!! (Abort Type: 0x%08X)\n", ctx->abortType);
+    printf("-----------------\n");
+    printf("PC: 0x%08X\n", ctx->pc);
+    printf("LR: 0x%08X\n", ctx->lr);
+    printf("SP: 0x%08X\n", ctx->sp);
+    printf("-----------------\n");
+    printf("REGISTERS:\n");
+    uint32_t *registers = (uint32_t *)ctx;
+    for (int i = 0; i < 13; i++) {
+        printf("R%d: 0x%08X\n", i, registers[i]);    
+    }
+    printf("-----------------\n");
+    printf("VFP REGISTERS:\n");
+    for (int i = 0; i < 32; i++) {
+        printf("D%d: 0x%016llX\n", i, ctx->vfpRegisters[i]);    
+    }
+    printf("-----------------\n");
+    printf("SPSR: 0x%08X\n", ctx->SPSR);
+    printf("FPSCR: 0x%08X\n", ctx->FPSCR);
+    printf("FPEXC: 0x%08X\n", ctx->FPEXC);
+    printf("FSR: 0x%08X\n", ctx->FSR);
+   // printf("FAR: 0x%08X\n", ctx->FAR);
+    sceKernelExitProcess(0);
+}*/
+
 int main(int argc, char *argv[]) {
-  SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
-  sceKernelStartThread(crasher_thread, 0, NULL);	
+  //kuKernelRegisterAbortHandler(abort_handler, NULL);
+  //SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
+  //sceKernelStartThread(crasher_thread, 0, NULL);	
 	
   SceAppUtilInitParam init_param;
   SceAppUtilBootParam boot_param;
@@ -1259,7 +1296,7 @@ int main(int argc, char *argv[]) {
   so_initialize(&iconv_mod);
   
   if (so_file_load(&obbvfs_mod, DATA_PATH "/libObbVfs.so", LOAD_ADDRESS + 0x2000000) < 0)
-    fatal_error("Error could not load %s.", DATA_PATH "/libiconv.so");
+    fatal_error("Error could not load %s.", DATA_PATH "/libObbVfs.so");
   so_relocate(&obbvfs_mod);
   so_resolve(&obbvfs_mod, default_dynlib, sizeof(default_dynlib), 0);
   so_flush_caches(&obbvfs_mod);
@@ -1314,7 +1351,7 @@ int main(int argc, char *argv[]) {
   *(uintptr_t *)(fake_env + 0x36C) = (uintptr_t)GetJavaVM;
   *(uintptr_t *)(fake_env + 0x374) = (uintptr_t)GetStringUTFRegion;
 
-  void (*Java_org_libsdl_app_SDLActivity_nativeInit)() = so_symbol(&fahrenheit_mod, "Java_org_libsdl_app_SDLActivity_nativeInit");
+  void (*Java_org_libsdl_app_SDLActivity_nativeInit)() = (void *)so_symbol(&fahrenheit_mod, "Java_org_libsdl_app_SDLActivity_nativeInit");
   Java_org_libsdl_app_SDLActivity_nativeInit();
   
   return 0;
