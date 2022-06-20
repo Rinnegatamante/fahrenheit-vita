@@ -1,0 +1,632 @@
+
+#define ASL_FASTEST 4353 // 0x1101
+#define ASL_NICEST 4354 // 0x1102
+// For colorMaterial
+#define ASL_AMBIENT                        4608 // 0x1200
+#define ASL_DIFFUSE                        4609 // 0x1201
+#define ASL_SPECULAR                       4610 // 0x1202
+#define ASL_EMISSION                       5632 // 0x1600
+#define ASL_AMBIENT_AND_DIFFUSE            5634 // 0x1602
+
+#if !defined(LIGHTING_ENABLED)
+	#define LIGHTING_ENABLED -1
+#endif
+
+#if !defined(FOG_ENABLED)
+	#define FOG_ENABLED -1
+#endif
+
+#if !defined(POSITION_ENABLED)
+	#define POSITION_ENABLED -1
+#endif
+
+#if !defined(NORMAL_ENABLED)
+	#define NORMAL_ENABLED -1
+#endif
+
+#if !defined(COLOR_ENABLED)
+	#define COLOR_ENABLED -1
+#endif
+
+#if !defined(COLOR_BGRA_ENABLED)
+	#define COLOR_BGRA_ENABLED -1
+#endif
+
+#if !defined(NORMALIZE_ENABLED)
+	#define NORMALIZE_ENABLED -1
+#endif
+
+#if !defined(RESCALE_NORMAL_ENABLED)
+	#define RESCALE_NORMAL_ENABLED -1
+#endif
+
+#if !defined(FOG_HINT)
+	#define FOG_HINT -1
+#endif
+
+#if !defined(TEXCOORD0_ENABLED)
+	#define TEXCOORD0_ENABLED -1
+#endif
+
+#if !defined(TEXCOORD1_ENABLED)
+	#define TEXCOORD1_ENABLED -1
+#endif
+
+#if !defined(TEXCOORD2_ENABLED)
+	#define TEXCOORD2_ENABLED -1
+#endif
+
+#if !defined(TEXTURE0_ENABLED)
+	#define TEXTURE0_ENABLED -1
+#endif
+
+#if !defined(TEXTURE1_ENABLED)
+	#define TEXTURE1_ENABLED -1
+#endif
+
+#if !defined(TEXTURE2_ENABLED)
+	#define TEXTURE2_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE0_ENABLED)
+	#define CLIP_PLANE0_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE1_ENABLED)
+	#define CLIP_PLANE1_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE2_ENABLED)
+	#define CLIP_PLANE2_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE3_ENABLED)
+	#define CLIP_PLANE3_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE4_ENABLED)
+	#define CLIP_PLANE4_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE5_ENABLED)
+	#define CLIP_PLANE5_ENABLED -1
+#endif
+
+#if !defined(NON_DIRECTIONAL_LIGHT_ENABLED)
+	#define NON_DIRECTIONAL_LIGHT_ENABLED -1
+#endif
+
+#if !defined(LIGHT_MODEL_LOCAL_VIEWER_ENABLED)
+	#define LIGHT_MODEL_LOCAL_VIEWER_ENABLED -1
+#endif
+
+// Uniforms
+uniform bool u_positionEnabled;
+uniform bool u_normalEnabled;
+uniform bool u_colorEnabled;
+uniform bool u_colorBgraEnabled;
+uniform float4x4 u_modelViewMatrix;
+uniform float4x4 u_modelViewProjectionMatrix;
+uniform float3x3 u_transposeAdjointModelViewMatrix;
+uniform bool u_lightingEnabled;
+uniform bool u_normalizeEnabled;
+uniform bool u_rescaleNormalEnabled;
+uniform float u_rescaleNormalFactor;
+uniform bool u_fogEnabled;
+uniform int u_fogHint;
+uniform int u_lightingHint;
+uniform int u_colorMaterial;
+
+// Shader constants
+static int c_zero = 0;
+static int c_one = 1;
+static float c_zerof = 0.0;
+static float c_onef = 1.0;
+
+// Shader variables
+float3 normal;
+float4 vertexPositionInEye;
+
+// Functions
+void calcLighting(float4 inputColor);
+float calcFogFactor(float distanceToEye);
+void calcClipPlanes();
+float4 calcTexture0Coordinates(float4 pos, float3 normal, float4 texcoord);
+float4 calcTexture1Coordinates(float4 pos, float3 normal, float4 texcoord);
+float4 calcTexture2Coordinates(float4 pos, float3 normal, float4 texcoord);
+float4 calcTexture3Coordinates(float4 pos, float3 normal, float4 texcoord);
+
+void main(
+	float4 a_position,
+	float4 a_color,
+	float3 a_normal,
+	float4 a_texCoord0,
+	float4 a_texCoord1,
+	float4 a_texCoord2,
+	float4 a_texCoord3,
+	float4 out v_frontColor : COLOR0,
+#if FOG_ENABLED == 1 || FOG_ENABLED == -1
+	float out v_fogFactor : FOG,
+	float out v_eyeDistance : TEXCOORD0,
+#endif
+#if TEXTURE0_ENABLED != 0
+	float4 out v_texCoord0 : TEXCOORD1,
+#endif
+#if TEXTURE1_ENABLED != 0
+	float4 out v_texCoord1 : TEXCOORD2,
+#endif
+#if TEXTURE2_ENABLED != 0
+	float4 out v_texCoord2 : TEXCOORD3,
+#endif
+#if TEXTURE3_ENABLED != 0
+	float4 out v_texCoord3 : TEXCOORD4,
+#endif
+	float4 out gl_Position : POSITION
+) {
+#if POSITION_ENABLED == 1
+	gl_Position = mul(a_position, u_modelViewProjectionMatrix);
+#elif POSITION_ENABLED == -1
+	if (u_positionEnabled) {
+		gl_Position = mul(a_position, u_modelViewProjectionMatrix);
+	}
+#endif
+		
+#if NORMAL_ENABLED == 1
+	normal = mul(a_normal, u_transposeAdjointModelViewMatrix);
+	#if RESCALE_NORMAL_ENABLED == 1
+		normal = normal * u_rescaleNormalFactor;
+	#elif RESCALE_NORMAL_ENABLED == -1
+		if (u_rescaleNormalEnabled) {
+			normal = normal * u_rescaleNormalFactor;
+		}
+	#endif
+	#if NORMALIZE_ENABLED == 1
+		normal = normalize(normal);
+	#elif NORMALIZE_ENABLED == -1
+		if (u_normalizeEnabled) {
+			normal = normalize(normal);
+		}
+	#endif
+#elif NORMAL_ENABLED == 0
+	normal = float3(c_zerof, c_zerof, c_onef);
+#elif NORMAL_ENABLED == -1
+	if (u_normalEnabled) {
+		normal = mul(a_normal, u_transposeAdjointModelViewMatrix);
+		#if RESCALE_NORMAL_ENABLED == 1
+			normal = normal * u_rescaleNormalFactor;
+		#elif RESCALE_NORMAL_ENABLED == -1
+			if (u_rescaleNormalEnabled) {
+				normal = normal * u_rescaleNormalFactor;
+			}
+		#endif
+		#if NORMALIZE_ENABLED == 1
+			normal = normalize(normal);
+		#elif NORMALIZE_ENABLED == -1
+			if (u_normalizeEnabled) {
+				normal = normalize(normal);
+			}
+		#endif
+	} else {
+		normal = float3(c_zerof, c_zerof, c_onef);
+	}
+#endif
+	
+	float4 pos = mul(a_position, u_modelViewMatrix);
+	float3 normals = mul(a_normal, u_transposeAdjointModelViewMatrix);
+#if TEXTURE0_ENABLED != 0
+	v_texCoord0 = calcTexture0Coordinates(pos, normals, a_texCoord0);
+#endif
+#if TEXTURE1_ENABLED != 0
+	v_texCoord1 = calcTexture1Coordinates(pos, normals, a_texCoord1);
+#endif
+#if TEXTURE2_ENABLED != 0
+	v_texCoord2 = calcTexture2Coordinates(pos, normals, a_texCoord2);
+#endif
+#if TEXTURE3_ENABLED != 0
+	v_texCoord3 = calcTexture3Coordinates(pos, normals, a_texCoord3);
+#endif
+	
+	float4 color;
+#if COLOR_ENABLED == 1
+	color = a_color;
+#elif COLOR_ENABLED == 0
+	color = float4(c_onef, c_onef, c_onef, c_onef);
+#elif COLOR_ENABLED == -1
+	color = u_colorEnabled ? a_color : float4(c_onef, c_onef, c_onef, c_onef);
+#endif
+#if COLOR_BGRA_ENABLED == 1
+	color.rgba = color.bgra;
+#elif COLOR_BGRA_ENABLED == 0
+#elif COLOR_BGRA_ENABLED == -1
+	color.rgba = u_colorBgraEnabled ? color.bgra : color.rgba;
+#endif
+	
+#if FOG_ENABLED == 1 || (LIGHTING_ENABLED == 1 && (NON_DIRECTIONAL_LIGHT_ENABLED != 0 || LIGHT_MODEL_LOCAL_VIEWER_ENABLED != 0)) || CLIP_PLANE0_ENABLED != 0 || CLIP_PLANE1_ENABLED != 0 || CLIP_PLANE2_ENABLED != 0 || CLIP_PLANE3_ENABLED !=0 || CLIP_PLANE4_ENABLED != 0 || CLIP_PLANE5_ENABLED != 0
+	vertexPositionInEye = mul(a_position, u_modelViewMatrix);
+#elif FOG_ENABLED == -1 && LIGHTING_ENABLED == -1
+	if (u_fogEnabled) {
+		vertexPositionInEye = mul(a_position, u_modelViewMatrix);
+	} else if (u_lightingEnabled) {
+		#if NON_DIRECTIONAL_LIGHT_ENABLED == 1 || NON_DIRECTIONAL_LIGHT_ENABLED == -1 || LIGHT_MODEL_LOCAL_VIEWER_ENABLED == 1 || LIGHT_MODEL_LOCAL_VIEWER_ENABLED == -1
+		vertexPositionInEye = mul(a_position, u_modelViewMatrix);
+		#else
+		vertexPositionInEye = float4(0, 0, 0, 1);
+		#endif
+	}
+	else
+	{
+		vertexPositionInEye = float4(0, 0, 0, 1);
+	}
+#elif FOG_ENABLED == -1
+	if (u_fogEnabled) {
+		vertexPositionInEye = mul(a_position, u_modelViewMatrix);
+	}
+	else
+	{
+		vertexPositionInEye = float4(0, 0, 0, 1);
+	}
+#elif LIGHTING_ENABLED == -1
+	if (u_lightingEnabled) {
+		#if NON_DIRECTIONAL_LIGHT_ENABLED == 1 || NON_DIRECTIONAL_LIGHT_ENABLED == -1 || LIGHT_MODEL_LOCAL_VIEWER_ENABLED == 1 || LIGHT_MODEL_LOCAL_VIEWER_ENABLED == -1
+		vertexPositionInEye = mul(a_position, u_modelViewMatrix);
+		#else
+		vertexPositionInEye = float4(0, 0, 0, 1);
+		#endif
+	}
+	else
+	{
+		vertexPositionInEye = float4(0, 0, 0, 1);
+	}
+#else
+	vertexPositionInEye = float4(0, 0, 0, 1);
+#endif
+
+#if LIGHTING_ENABLED == 1
+	calcLighting(color);
+#elif LIGHTING_ENABLED == 0
+	v_frontColor = color;
+#else
+	if (u_lightingEnabled) {
+		calcLighting(color);
+	} else {
+		v_frontColor = color;
+	}
+#endif
+	
+#if FOG_ENABLED == 1 || FOG_ENABLED == -1
+	#if FOG_ENABLED == -1
+	if (u_fogEnabled) {
+	#endif
+		
+	#if FOG_HINT == ASL_FASTEST
+		v_fogFactor = calcFogFactor(-vertexPositionInEye.z);
+	#elif FOG_HINT == ASL_NICEST
+		v_eyeDistance = -vertexPositionInEye.z;
+	#elif FOG_HINT == -1
+		if (u_fogHint == ASL_FASTEST) {
+			v_fogFactor = calcFogFactor(-vertexPositionInEye.z);
+		} else {
+			v_eyeDistance = -vertexPositionInEye.z;
+		}
+	#endif
+		
+	#if FOG_ENABLED == -1
+	}
+	#endif
+#endif
+	
+#if CLIP_PLANE0_ENABLED != 0 || CLIP_PLANE1_ENABLED != 0 || CLIP_PLANE2_ENABLED != 0 || CLIP_PLANE3_ENABLED !=0 || CLIP_PLANE4_ENABLED != 0 || CLIP_PLANE5_ENABLED != 0
+	calcClipPlanes();
+#endif
+}
+
+#if !defined(TEXTURE0_MATRIX_ENABLED)
+#define TEXTURE0_MATRIX_ENABLED 0
+#endif
+#if !defined(TEXTURE1_MATRIX_ENABLED)
+#define TEXTURE1_MATRIX_ENABLED 1
+#endif
+#if !defined(TEXTURE2_MATRIX_ENABLED)
+#define TEXTURE2_MATRIX_ENABLED 1
+#endif
+#if !defined(TEXTURE3_MATRIX_ENABLED)
+#define TEXTURE3_MATRIX_ENABLED 1
+#endif
+#if !defined(TEXTURE4_MATRIX_ENABLED)
+#define TEXTURE4_MATRIX_ENABLED 1
+#endif
+#if !defined(TEXTURE5_MATRIX_ENABLED)
+#define TEXTURE5_MATRIX_ENABLED 1
+#endif
+#if !defined(TEXTURE6_MATRIX_ENABLED)
+#define TEXTURE6_MATRIX_ENABLED 1
+#endif
+#if !defined(TEXTURE7_MATRIX_ENABLED)
+#define TEXTURE7_MATRIX_ENABLED 1
+#endif
+
+
+// Uniforms
+uniform bool u_texture0Enabled;
+uniform bool u_texture1Enabled;
+uniform bool u_texture2Enabled;
+uniform bool u_texture3Enabled;
+
+#if !defined(ASL_EYE_LINEAR)
+#define ASL_EYE_LINEAR                     9216 // 0x2400
+#define ASL_OBJECT_LINEAR                  9217 // 0x2401
+#define ASL_SPHERE_MAP                     9218 // 0x2402
+#define ASL_NORMAL_MAP_ARB                 34065 // 0x8511
+#define ASL_REFLECTION_MAP_ARB             34066 // 0x8512
+#endif
+
+#if TEXTURE0_ENABLED != 0
+
+#if !defined(TEXTURE0_MATRIX_ENABLED)
+#define TEXTURE0_MATRIX_ENABLED -1
+#endif
+
+#if !defined(TEXTURE0_GEN_MODE_S)
+#define TEXTURE0_GEN_MODE_S -1
+#endif
+
+#if !defined(TEXTURE0_GEN_MODE_T)
+#define TEXTURE0_GEN_MODE_T -1
+#endif
+
+#if !defined(TEXTURE0_GEN_MODE_R)
+#define TEXTURE0_GEN_MODE_R -1
+#endif
+
+// Uniforms
+uniform bool u_texture0MatrixEnabled;
+uniform float4x4 u_texture0Matrix;
+
+float4 calcTexture0Coordinates(float4 pos, float3 normal, float4 a_texCoord0)
+{
+#if TEXCOORD0_ENABLED
+	float4 inTexCoord = a_texCoord0;
+#else
+	float4 inTexCoord = float4(c_zero, c_zero, c_zero, c_zero);
+#endif
+	
+#if (TEXCOORD0_GEN_S_ENABLED > 0) || (TEXCOORD0_GEN_T_ENABLED > 0) || (TEXCOORD0_GEN_R_ENABLED > 0)
+#if TEXTURE0_GEN_MODE_S == ASL_EYE_LINEAR
+	inTexCoord = pos;
+#elif TEXTURE0_GEN_MODE_S == ASL_NORMAL_MAP_ARB
+	inTexCoord = float4(normal.x, normal.y, normal.z, 1.0);
+#elif TEXTURE0_GEN_MODE_S == ASL_REFLECTION_MAP_ARB
+	float3 reflect = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
+	inTexCoord = float44(reflect.x, reflect.y, reflect.z, 1.0);
+#endif
+#endif
+
+#if TEXTURE0_MATRIX_ENABLED == 1 || TEXTURE0_MATRIX_ENABLED == -1
+#if TEXTURE0_MATRIX_ENABLED == -1
+	if (u_texture0MatrixEnabled) {
+#endif
+		inTexCoord = mul(inTexCoord, u_texture0Matrix);
+#if TEXTURE0_MATRIX_ENABLED == -1
+	}
+#endif
+#endif
+#if (TEXCOORD0_GEN_S_ENABLED > 0) || (TEXCOORD0_GEN_T_ENABLED > 0) || (TEXCOORD0_GEN_R_ENABLED > 0)
+	inTexCoord.x /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.y /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.z = 0.0;
+	inTexCoord.w = 0.0;
+#endif
+	return inTexCoord;
+}
+
+#endif
+
+
+#if !defined(ASL_EYE_LINEAR)
+#define ASL_EYE_LINEAR                     9216 // 0x2400
+#define ASL_OBJECT_LINEAR                  9217 // 0x2401
+#define ASL_SPHERE_MAP                     9218 // 0x2402
+#define ASL_NORMAL_MAP_ARB                 34065 // 0x8511
+#define ASL_REFLECTION_MAP_ARB             34066 // 0x8512
+#endif
+
+#if TEXTURE1_ENABLED != 0
+
+#if !defined(TEXTURE1_MATRIX_ENABLED)
+#define TEXTURE1_MATRIX_ENABLED -1
+#endif
+
+#if !defined(TEXTURE1_GEN_MODE_S)
+#define TEXTURE1_GEN_MODE_S -1
+#endif
+
+#if !defined(TEXTURE1_GEN_MODE_T)
+#define TEXTURE1_GEN_MODE_T -1
+#endif
+
+#if !defined(TEXTURE1_GEN_MODE_R)
+#define TEXTURE1_GEN_MODE_R -1
+#endif
+
+// Uniforms
+uniform bool u_texture1MatrixEnabled;
+uniform float4x4 u_texture1Matrix;
+
+float4 calcTexture1Coordinates(float4 pos, float3 normal, float4 a_texCoord1)
+{
+#if TEXCOORD1_ENABLED
+	float4 inTexCoord = a_texCoord1;
+#else
+	float4 inTexCoord = float4(c_zero, c_zero, c_zero, c_zero);
+#endif
+	
+#if (TEXCOORD1_GEN_S_ENABLED > 0) || (TEXCOORD1_GEN_T_ENABLED > 0) || (TEXCOORD1_GEN_R_ENABLED > 0)
+#if TEXTURE1_GEN_MODE_S == ASL_EYE_LINEAR
+	inTexCoord = pos;
+#elif TEXTURE1_GEN_MODE_S == ASL_NORMAL_MAP_ARB
+	inTexCoord = float4(normal.x, normal.y, normal.z, 1.0);
+#elif TEXTURE1_GEN_MODE_S == ASL_REFLECTION_MAP_ARB
+	float3 reflect = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
+	inTexCoord = float4(reflect.x, reflect.y, reflect.z, 1.0);
+#endif
+#endif
+
+#if TEXTURE1_MATRIX_ENABLED == 1 || TEXTURE1_MATRIX_ENABLED == -1
+#if TEXTURE1_MATRIX_ENABLED == -1
+	if (u_texture1MatrixEnabled) {
+#endif
+		inTexCoord = mul(inTexCoord, u_texture1Matrix);
+#if TEXTURE1_MATRIX_ENABLED == -1
+	}
+#endif
+#endif
+#if (TEXCOORD1_GEN_S_ENABLED > 0) || (TEXCOORD1_GEN_T_ENABLED > 0) || (TEXCOORD1_GEN_R_ENABLED > 0)
+	inTexCoord.x /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.y /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.z = 0.0;
+	inTexCoord.w = 0.0;
+#endif
+	return inTexCoord;
+}
+
+#endif
+
+
+#if !defined(ASL_EYE_LINEAR)
+#define ASL_EYE_LINEAR                     9216 // 0x2400
+#define ASL_OBJECT_LINEAR                  9217 // 0x2401
+#define ASL_SPHERE_MAP                     9218 // 0x2402
+#define ASL_NORMAL_MAP_ARB                 34065 // 0x8511
+#define ASL_REFLECTION_MAP_ARB             34066 // 0x8512
+#endif
+
+#if TEXTURE2_ENABLED != 0
+
+#if !defined(TEXTURE2_MATRIX_ENABLED)
+#define TEXTURE2_MATRIX_ENABLED -1
+#endif
+
+#if !defined(TEXTURE2_GEN_MODE_S)
+#define TEXTURE2_GEN_MODE_S -1
+#endif
+
+#if !defined(TEXTURE2_GEN_MODE_T)
+#define TEXTURE2_GEN_MODE_T -1
+#endif
+
+#if !defined(TEXTURE2_GEN_MODE_R)
+#define TEXTURE2_GEN_MODE_R -1
+#endif
+
+// Uniforms
+uniform bool u_texture2MatrixEnabled;
+uniform float4x4 u_texture2Matrix;
+
+float4 calcTexture2Coordinates(float4 pos, float3 normal, float4 a_texCoord2)
+{
+#if TEXCOORD2_ENABLED
+	float4 inTexCoord = a_texCoord2;
+#else
+	float4 inTexCoord = float4(c_zero, c_zero, c_zero, c_zero);
+#endif
+	
+#if (TEXCOORD2_GEN_S_ENABLED > 0) || (TEXCOORD2_GEN_T_ENABLED > 0) || (TEXCOORD2_GEN_R_ENABLED > 0)
+#if TEXTURE2_GEN_MODE_S == ASL_EYE_LINEAR
+	inTexCoord = pos;
+#elif TEXTURE2_GEN_MODE_S == ASL_NORMAL_MAP_ARB
+	inTexCoord = float4(normal.x, normal.y, normal.z, 1.0);
+#elif TEXTURE2_GEN_MODE_S == ASL_REFLECTION_MAP_ARB
+	vec3 reflect = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
+	inTexCoord = float4(reflect.x, reflect.y, reflect.z, 1.0);
+#endif
+#endif
+
+#if TEXTURE2_MATRIX_ENABLED == 1 || TEXTURE2_MATRIX_ENABLED == -1
+#if TEXTURE2_MATRIX_ENABLED == -1
+	if (u_texture2MatrixEnabled) {
+#endif
+		inTexCoord = mul(inTexCoord, u_texture2Matrix);
+#if TEXTURE2_MATRIX_ENABLED == -1
+	}
+#endif
+#endif
+#if (TEXCOORD2_GEN_S_ENABLED > 0) || (TEXCOORD2_GEN_T_ENABLED > 0) || (TEXCOORD2_GEN_R_ENABLED > 0)
+	inTexCoord.x /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.y /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.z = 0.0;
+	inTexCoord.w = 0.0;
+#endif
+	return inTexCoord;
+}
+
+#endif
+
+
+#if !defined(ASL_EYE_LINEAR)
+#define ASL_EYE_LINEAR                     9216 // 0x2400
+#define ASL_OBJECT_LINEAR                  9217 // 0x2401
+#define ASL_SPHERE_MAP                     9218 // 0x2402
+#define ASL_NORMAL_MAP_ARB                 34065 // 0x8511
+#define ASL_REFLECTION_MAP_ARB             34066 // 0x8512
+#endif
+
+#if TEXTURE3_ENABLED != 0
+
+#if !defined(TEXTURE3_MATRIX_ENABLED)
+#define TEXTURE3_MATRIX_ENABLED -1
+#endif
+
+#if !defined(TEXTURE3_GEN_MODE_S)
+#define TEXTURE3_GEN_MODE_S -1
+#endif
+
+#if !defined(TEXTURE3_GEN_MODE_T)
+#define TEXTURE3_GEN_MODE_T -1
+#endif
+
+#if !defined(TEXTURE3_GEN_MODE_R)
+#define TEXTURE3_GEN_MODE_R -1
+#endif
+
+// Uniforms
+uniform bool u_texture3MatrixEnabled;
+uniform float4x4 u_texture3Matrix;
+
+float4 calcTexture3Coordinates(float4 pos, float3 normal, float4 a_texCoord3)
+{
+#if TEXCOORD3_ENABLED
+	float4 inTexCoord = a_texCoord3;
+#else
+	float4 inTexCoord = float4(c_zero, c_zero, c_zero, c_zero);
+#endif
+	
+#if (TEXCOORD3_GEN_S_ENABLED > 0) || (TEXCOORD3_GEN_T_ENABLED > 0) || (TEXCOORD3_GEN_R_ENABLED > 0)
+#if TEXTURE3_GEN_MODE_S == ASL_EYE_LINEAR
+	inTexCoord = pos;
+#elif TEXTURE3_GEN_MODE_S == ASL_NORMAL_MAP_ARB
+	inTexCoord = float4(normal.x, normal.y, normal.z, 1.0);
+#elif TEXTURE3_GEN_MODE_S == ASL_REFLECTION_MAP_ARB
+	float3 reflect = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
+	inTexCoord = float4(reflect.x, reflect.y, reflect.z, 1.0);
+#endif
+#endif
+
+#if TEXTURE3_MATRIX_ENABLED == 1 || TEXTURE3_MATRIX_ENABLED == -1
+#if TEXTURE3_MATRIX_ENABLED == -1
+	if (u_texture3MatrixEnabled) {
+#endif
+		inTexCoord = mul(inTexCoord, u_texture3Matrix);
+#if TEXTURE3_MATRIX_ENABLED == -1
+	}
+#endif
+#endif
+#if (TEXCOORD3_GEN_S_ENABLED > 0) || (TEXCOORD3_GEN_T_ENABLED > 0) || (TEXCOORD3_GEN_R_ENABLED > 0)
+	inTexCoord.x /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.y /= clamp(inTexCoord.w, 0.0001, 10000.0);
+	inTexCoord.z = 0.0;
+	inTexCoord.w = 0.0;
+#endif
+	return inTexCoord;
+}
+
+#endif

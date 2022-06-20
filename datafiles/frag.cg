@@ -1,0 +1,1934 @@
+
+#define ASL_TEXTURE 5890 // 0x1702
+#define ASL_TEXTURE0 33984 // 0x84C0
+#define ASL_TEXTURE1 33985 // 0x84C1
+#define ASL_TEXTURE2 33986 // 0x84C2
+#define ASL_TEXTURE3 33987 // 0x84C3
+
+#define ASL_FASTEST 4353 // 0x1101
+#define ASL_NICEST 4354 // 0x1102
+
+#if !defined(TEXTURE0_ENABLED)
+	#define TEXTURE0_ENABLED -1
+#endif
+
+#if !defined(TEXTURE1_ENABLED)
+	#define TEXTURE1_ENABLED -1
+#endif
+
+#if !defined(TEXTURE2_ENABLED)
+	#define TEXTURE2_ENABLED -1
+#endif
+
+#if !defined(FOG_ENABLED)
+	#define FOG_ENABLED -1
+#endif
+
+#if !defined(FOG_HINT)
+	#define FOG_HINT -1
+#endif
+
+#if !defined(LIGHTING_ENABLED)
+	#define LIGHTING_ENABLED -1
+#endif
+
+#if !defined(ALPHA_TEST_ENABLED)
+	#define ALPHA_TEST_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE0_ENABLED)
+	#define CLIP_PLANE0_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE1_ENABLED)
+	#define CLIP_PLANE1_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE2_ENABLED)
+	#define CLIP_PLANE2_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE3_ENABLED)
+	#define CLIP_PLANE3_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE4_ENABLED)
+	#define CLIP_PLANE4_ENABLED -1
+#endif
+
+#if !defined(CLIP_PLANE5_ENABLED)
+	#define CLIP_PLANE5_ENABLED -1
+#endif
+
+// Uniforms
+uniform bool u_fogEnabled;
+uniform float3 u_fogColor;
+uniform int u_fogHint;
+uniform bool u_alphaTestEnabled;
+uniform bool u_lightingEnabled;
+
+// Shader constants
+static int c_zero = 0;
+static int c_one = 1;
+static float c_zerof = 0.0;
+static float c_onef = 1.0;
+
+// Funtions
+float calcFogFactor(float distanceToEye);
+float4 calcLighting();
+void clipPlanesTest();
+void alphaTest(float alpha);
+void calcTextureColorContribution(inout float4 color);
+
+// Functions
+float4 fetchTexture0Color(float4 texcoord);
+float4 fetchTexture1Color(float4 texcoord);
+float4 fetchTexture2Color(float4 texcoord);
+float4 fetchTexture3Color(float4 texcoord);
+float4 calcTexture0Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
+float4 calcTexture1Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
+float4 calcTexture2Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
+float4 calcTexture3Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
+
+float4 main(
+#if FOG_ENABLED == 1 || FOG_ENABLED == -1
+	float v_fogFactor : FOG,
+	float v_eyeDistance : TEXCOORD0,
+#endif
+#if TEXTURE0_ENABLED != 0
+	float4 v_texCoord0 : TEXCOORD1,
+#endif
+#if TEXTURE1_ENABLED != 0
+	float4 v_texCoord1 : TEXCOORD2,
+#endif
+#if TEXTURE2_ENABLED != 0
+	float4 v_texCoord2 : TEXCOORD3,
+#endif
+#if TEXTURE3_ENABLED != 0
+	float4 v_texCoord3 : TEXCOORD4,
+#endif
+	float4 v_frontColor : COLOR0
+) {
+#if CLIP_PLANE0_ENABLED != 0 || CLIP_PLANE1_ENABLED != 0 || CLIP_PLANE2_ENABLED != 0 || CLIP_PLANE3_ENABLED != 0 || CLIP_PLANE4_ENABLED != 0 || CLIP_PLANE5_ENABLED != 0
+	clipPlanesTest();
+#endif
+	
+	float4 color;
+#if LIGHTING_ENABLED == 1
+	color = calcLighting(color);
+#elif LIGHTING_ENABLED == 0
+	color = v_frontColor;
+#else
+	if (u_lightingEnabled) {
+		color = calcLighting();
+	} else {
+		color = v_frontColor;
+	}
+#endif
+	
+	// Fetch enabled texture colors
+	float4 t0_clr;
+	float4 t1_clr;
+	float4 t2_clr;
+	float4 t3_clr;
+#if TEXTURE0_ENABLED == 1 || TEXTURE0_ENABLED == -1
+	#if TEXTURE0_ENABLED == -1
+	if (u_texture0Enabled) {
+	#endif
+		t0_clr = fetchTexture0Color(v_texCoord0);
+	#if TEXTURE0_ENABLED == -1
+	}
+	#endif
+#endif
+	
+#if TEXTURE1_ENABLED == 1 || TEXTURE1_ENABLED == -1
+	#if TEXTURE1_ENABLED == -1
+	if (u_texture1Enabled) {
+	#endif
+		t1_clr = fetchTexture1Color(v_texCoord1);
+	#if TEXTURE1_ENABLED == -1
+	}
+	#endif
+#endif
+	
+#if TEXTURE2_ENABLED == 1 || TEXTURE2_ENABLED == -1
+	#if TEXTURE2_ENABLED == -1
+	if (u_texture2Enabled) {
+	#endif
+		t2_clr = fetchTexture2Color(v_texCoord2);
+	#if TEXTURE2_ENABLED == -1
+	}
+	#endif
+#endif
+	
+#if TEXTURE3_ENABLED == 1 || TEXTURE3_ENABLED == -1
+#if TEXTURE3_ENABLED == -1
+	if (u_texture3Enabled) {
+#endif
+		t3_clr = fetchTexture3Color(v_texCoord3);
+#if TEXTURE3_ENABLED == -1
+	}
+#endif
+#endif
+	
+	// Calc texture colors based on environment
+#if TEXTURE0_ENABLED == 1 || TEXTURE0_ENABLED == -1
+	#if TEXTURE0_ENABLED == -1
+	if (u_texture0Enabled) {
+	#endif
+		color = calcTexture0Environment(color, v_texCoord0, t0_clr, t1_clr, t2_clr, t3_clr, v_frontColor);
+	#if TEXTURE0_ENABLED == -1
+	}
+	#endif
+#endif
+
+#if TEXTURE1_ENABLED == 1 || TEXTURE1_ENABLED == -1
+	#if TEXTURE1_ENABLED == -1
+	if (u_texture1Enabled) {
+	#endif
+		color = calcTexture1Environment(color, v_texCoord1, t0_clr, t1_clr, t2_clr, t3_clr, v_frontColor);
+	#if TEXTURE1_ENABLED == -1
+	}
+	#endif
+#endif
+	
+#if TEXTURE2_ENABLED == 1 || TEXTURE2_ENABLED == -1
+	#if TEXTURE2_ENABLED == -1
+	if (u_texture2Enabled) {
+	#endif
+		color = calcTexture2Environment(color, v_texCoord2, t0_clr, t1_clr, t2_clr, t3_clr, v_frontColor);
+	#if TEXTURE2_ENABLED == -1
+	}
+	#endif
+#endif
+
+#if TEXTURE3_ENABLED == 1 || TEXTURE3_ENABLED == -1
+#if TEXTURE3_ENABLED == -1
+	if (u_texture3Enabled) {
+#endif
+		color = calcTexture3Environment(color, v_texCoord3, t0_clr, t1_clr, t2_clr, t3_clr, v_frontColor);
+#if TEXTURE2_ENABLED == -1
+	}
+#endif
+#endif
+	
+#if ALPHA_TEST_ENABLED == 1 || ALPHA_TEST_ENABLED == -1
+	#if ALPHA_TEST_ENABLED == -1
+	if (u_alphaTestEnabled) {
+	#endif
+	alphaTest(color.a);
+	#if ALPHA_TEST_ENABLED == -1
+	}
+	#endif
+#endif
+	
+#if FOG_ENABLED == 1 || FOG_ENABLED == -1
+	#if FOG_ENABLED == -1
+	if (u_fogEnabled) {
+	#endif
+		
+	float fogFactor;
+	#if FOG_HINT == ASL_FASTEST
+		fogFactor = v_fogFactor;
+	#elif FOG_HINT == ASL_NICEST
+		fogFactor = calcFogFactor(v_eyeDistance);
+	#elif FOG_HINT == -1
+		if (u_fogHint == ASL_FASTEST) {
+			fogFactor = v_fogFactor;
+		} else {
+			fogFactor = calcFogFactor(v_eyeDistance);
+		}
+	#endif
+	color.rgb = lerp(u_fogColor, color.rgb, fogFactor);
+	
+	#if FOG_ENABLED == -1
+	}
+	#endif
+#endif
+	
+	return color;
+//	gl_FragColor = float4(1.0, 0.0, 0.0, 1.0);
+}
+
+
+#define ASL_ALPHA 6406 // 0x1906
+#define ASL_RGB 6407 // 0x1907
+#define ASL_RGBA 6408 // 0x1908
+#define ASL_LUMINANCE 6409 // 0x1909
+#define ASL_LUMINANCE_ALPHA 6410 // 0x190A
+
+#define ASL_MODULATE 8448 // 0x2100
+#define ASL_ADD 260 // 0x0104
+#define ASL_DECAL 8449 // 0x2101
+#define ASL_BLEND 3042 // 0x0BE2
+#define ASL_REPLACE 7681 // 0x1E01
+#define ASL_COMBINE 34160 // 0x8570
+#define ASL_ADD_SIGNED 34164 // 0x8574
+#define ASL_INTERPOLATE 34165 // 0x8575
+#define ASL_SUBTRACT 34023 // 0x84E7
+
+#define ASL_MODULATE_ADD_ATI 34628 // 0x8744
+
+#define ASL_DOT3_RGB 34478 // 0x86AE
+#define ASL_DOT3_RGBA 34479 // 0x86AF
+#define ASL_BLUR 34559 // 0x86FF
+#define ASL_CONSTANT 34166 // 0x8576
+#define ASL_PRIMARY_COLOR 34167 // 0x8577
+#define ASL_PREVIOUS 34168 // 0x8578
+#define ASL_SRC_COLOR 768 // 0x0300
+#define ASL_ONE_MINUS_SRC_COLOR 769 // 0x0301
+#define ASL_SRC_ALPHA 770 // 0x0302
+#define ASL_ONE_MINUS_SRC_ALPHA 771 // 0x0303
+
+// Uniforms
+uniform bool u_texture0Enabled;
+uniform bool u_texture1Enabled;
+uniform bool u_texture2Enabled;
+uniform bool u_texture3Enabled;
+
+#if !defined(TEXCOORD0_ENABLED)
+	#define TEXCOORD0_ENABLED -1
+#endif
+
+#if !defined(TEXTURE0_FORMAT)
+	#define TEXTURE0_FORMAT -1
+#endif
+
+#if !defined(TEXTURE0_ENV_MODE)
+	#define TEXTURE0_ENV_MODE -1
+#endif
+
+#if !defined(TEXTURE0_ENV_COMBINE_RGB)
+	#define TEXTURE0_ENV_COMBINE_RGB -1
+#endif
+
+#if !defined(TEXTURE0_ENV_COMBINE_ALPHA)
+	#define TEXTURE0_ENV_COMBINE_ALPHA -1
+#endif
+
+#if !defined(TEXTURE0_ENV_SRC0_RGB)
+	#define TEXTURE0_ENV_SRC0_RGB -1
+#endif
+
+#if !defined(TEXTURE0_ENV_SRC1_RGB)
+	#define TEXTURE0_ENV_SRC1_RGB -1
+#endif
+
+#if !defined(TEXTURE0_ENV_SRC2_RGB)
+	#define TEXTURE0_ENV_SRC2_RGB -1
+#endif
+
+#if !defined(TEXTURE0_ENV_SRC0_ALPHA)
+	#define TEXTURE0_ENV_SRC0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE0_ENV_SRC1_ALPHA)
+	#define TEXTURE0_ENV_SRC1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE0_ENV_SRC2_ALPHA)
+	#define TEXTURE0_ENV_SRC2_ALPHA -1
+#endif
+
+#if !defined(TEXTURE0_ENV_OPERAND0_RGB)
+	#define TEXTURE0_ENV_OPERAND0_RGB -1
+#endif
+
+#if !defined(TEXTURE0_ENV_OPERAND1_RGB)
+	#define TEXTURE0_ENV_OPERAND1_RGB -1
+#endif
+
+#if !defined(TEXTURE0_ENV_OPERAND2_RGB)
+	#define TEXTURE0_ENV_OPERAND2_RGB -1
+#endif
+
+#if !defined(TEXTURE0_ENV_OPERAND0_ALPHA)
+	#define TEXTURE0_ENV_OPERAND0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE0_ENV_OPERAND1_ALPHA)
+	#define TEXTURE0_ENV_OPERAND1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE0_ENV_OPERAND2_ALPHA)
+	#define TEXTURE0_ENV_OPERAND2_ALPHA -1
+#endif
+
+// Uniforms
+uniform sampler2D u_texture0Sampler;
+uniform int u_texture0Format;
+uniform bool u_texCoord0Enabled;
+uniform int u_texture0EnvMode;
+uniform float4 u_texture0EnvColor;
+uniform int u_texture0EnvCombineRGB;
+uniform int u_texture0EnvCombineAlpha;
+uniform float u_texture0EnvRGBScale;
+uniform float u_texture0EnvAlphaScale;
+uniform float u_texture0EnvBlurAmount;
+
+#if TEXTURE0_ENABLED != 0
+float4 fetchTexture0Color(float4 v_texCoord0)
+{
+	float4 texCoord0;
+	texCoord0 = v_texCoord0;
+
+	#if TEXTURE0_ENABLED == -1
+	if (u_texture0Enabled) {
+	#endif
+		return tex2D(u_texture0Sampler, texCoord0.xy);
+	#if TEXTURE0_ENABLED == -1
+	}
+	return float4(0.0f, 0.0f, 0.0f, 0.0f);
+	#endif
+}
+
+float4 calcTexture0Environment(float4 color, float4 v_texCoord0, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor)
+{	
+#if TEXTURE0_ENV_MODE == ASL_MODULATE
+	#if TEXTURE0_FORMAT == ASL_ALPHA
+		color.a = color.a * texture0Color.a;
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb * texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE_ALPHA
+		color = color * texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_RGB
+		color.rgb = color.rgb * texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_RGBA
+		color = color * texture0Color;
+	#endif
+#elif TEXTURE0_ENV_MODE == ASL_ADD
+	#if TEXTURE0_FORMAT == ASL_ALPHA
+		color.a = color.a * texture0Color.a;
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb + texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = color.rgb + texture0Color.rgb;
+		color.a = color.a * texture0Color.a;
+	#elif TEXTURE0_FORMAT == ASL_RGB
+		color.rgb = color.rgb + texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_RGBA
+		color.rgb = color.rgb + texture0Color.rgb;
+		color.a = color.a * texture0Color.a;
+	#endif
+#elif TEXTURE0_ENV_MODE == ASL_DECAL
+	#if TEXTURE0_FORMAT == ASL_ALPHA
+		// undefined
+		#error TEXTURE0_ENV_MODE == ASL_DECAL, TEXTURE0_FORMAT == ASL_ALPHA
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE
+		// undefined
+		#error TEXTURE0_ENV_MODE == ASL_DECAL, TEXTURE0_FORMAT == ASL_LUMINANCE
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE_ALPHA
+		// undefined
+		#error TEXTURE0_ENV_MODE == ASL_DECAL, TEXTURE0_FORMAT == ASL_LUMINANCE_ALPHA
+	#elif TEXTURE0_FORMAT == ASL_RGB
+		color.rgb = texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, texture0Color.rgb, texture0Color.a);
+	#endif
+#elif TEXTURE0_ENV_MODE == ASL_BLEND
+	#if TEXTURE0_FORMAT == ASL_ALPHA
+		color.a = color.a * texture0Color.a;
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE
+		color.rgb = lerp(color.rgb, u_texture0EnvColor.rgb, texture0Color.rgb);
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = lerp(color.rgb, u_texture0EnvColor.rgb, texture0Color.rgb);
+		color.a = color.a * texture0Color.a;
+	#elif TEXTURE0_FORMAT == ASL_RGB
+		color.rgb = lerp(color.rgb, u_texture0EnvColor.rgb, texture0Color.rgb);
+	#elif TEXTURE0_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, u_texture0EnvColor.rgb, texture0Color.rgb);
+		color.a = color.a * texture0Color.a;
+	#endif
+#elif TEXTURE0_ENV_MODE == ASL_REPLACE
+	#if TEXTURE0_FORMAT == ASL_ALPHA
+		color.a = texture0Color.a;
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE
+		color.rgb = texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_LUMINANCE_ALPHA
+		color = texture0Color;
+	#elif TEXTURE0_FORMAT == ASL_RGB
+		color.rgb = texture0Color.rgb;
+	#elif TEXTURE0_FORMAT == ASL_RGBA
+		color = texture0Color;
+	#endif
+#elif TEXTURE0_ENV_MODE == ASL_BLUR
+	float4 sample0 = texture0Color;
+	float4 sample1 = tex2D(u_texture0Sampler, float2(v_texCoord0.x - u_texture0EnvBlurAmount, v_texCoord0.y - u_texture0EnvBlurAmount));
+	float4 sample2 = tex2D(u_texture0Sampler, float2(v_texCoord0.x + u_texture0EnvBlurAmount, v_texCoord0.y + u_texture0EnvBlurAmount));
+	float4 sample3 = tex2D(u_texture0Sampler, float2(v_texCoord0.x - u_texture0EnvBlurAmount, v_texCoord0.y + u_texture0EnvBlurAmount));
+	float4 sample4 = tex2D(u_texture0Sampler, float2(v_texCoord0.x + u_texture0EnvBlurAmount, v_texCoord0.y - u_texture0EnvBlurAmount));
+	color = (sample0 + sample1 + sample2 + sample3 + sample4) / 5.0;
+#elif TEXTURE0_ENV_MODE == ASL_COMBINE
+	float4 arg0;
+	float4 arg1;
+
+	#if TEXTURE0_ENV_SRC0_RGB == 0 || TEXTURE0_ENV_SRC0_RGB == ASL_TEXTURE0 || TEXTURE0_ENV_SRC0_RGB == ASL_TEXTURE
+		arg0 = texture0Color;
+	#elif TEXTURE0_ENV_SRC0_RGB == 1 || TEXTURE0_ENV_SRC0_RGB == ASL_TEXTURE1
+		arg0 = texture1Color;
+	#elif TEXTURE0_ENV_SRC0_RGB == 2 || TEXTURE0_ENV_SRC0_RGB == ASL_TEXTURE2
+		arg0 = texture2Color;
+	#elif TEXTURE0_ENV_SRC0_RGB == 3 || TEXTURE0_ENV_SRC0_RGB == ASL_TEXTURE3
+		arg0 = texture3Color;
+	#elif TEXTURE0_ENV_SRC0_RGB == ASL_CONSTANT
+		arg0 = u_texture0EnvColor;
+	#elif TEXTURE0_ENV_SRC0_RGB == ASL_PRIMARY_COLOR
+		arg0 = v_frontColor;
+	#elif TEXTURE0_ENV_SRC0_RGB == ASL_PREVIOUS
+		arg0 = color;
+	#else 
+		#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_SRC0_RGB unrecognized
+#endif
+
+	#if TEXTURE0_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg0.rgb = 1.0 - arg0.rgb;
+	#elif TEXTURE0_ENV_OPERAND0_RGB == ASL_SRC_ALPHA
+		arg0.rgb = arg0.aaa;
+	#elif TEXTURE0_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.rgb = 1.0 - arg0.aaa;
+	#endif
+	
+	#if TEXTURE0_ENV_SRC0_ALPHA == 0 || TEXTURE0_ENV_SRC0_ALPHA == ASL_TEXTURE0 || TEXTURE0_ENV_SRC0_ALPHA == ASL_TEXTURE
+		arg0.a = texture0Color.a;
+	#elif TEXTURE0_ENV_SRC0_ALPHA == 1 || TEXTURE0_ENV_SRC0_ALPHA == ASL_TEXTURE1
+		arg0.a = texture1Color.a;
+	#elif TEXTURE0_ENV_SRC0_ALPHA == 2 || TEXTURE0_ENV_SRC0_ALPHA == ASL_TEXTURE2
+		arg0.a = texture2Color.a;
+	#elif TEXTURE0_ENV_SRC0_ALPHA == 3 || TEXTURE0_ENV_SRC0_ALPHA == ASL_TEXTURE3
+		arg0.a = texture3Color.a;
+	#elif TEXTURE0_ENV_SRC0_ALPHA == ASL_CONSTANT
+		arg0.a = u_texture0EnvColor.a;
+	#elif TEXTURE0_ENV_SRC0_ALPHA == ASL_PRIMARY_COLOR
+		arg0.a = v_frontColor.a;
+	#elif TEXTURE0_ENV_SRC0_ALPHA == ASL_PREVIOUS
+		arg0.a = color.a;
+	#else 
+		#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_SRC0_ALPHA unrecognized
+	#endif
+		
+	#if TEXTURE0_ENV_OPERAND0_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.a = 1.0 - arg0.a;
+	#endif
+		
+	#if TEXTURE0_ENV_SRC1_RGB == 0 || TEXTURE0_ENV_SRC1_RGB == ASL_TEXTURE0 || TEXTURE0_ENV_SRC1_RGB == ASL_TEXTURE
+		arg1 = texture0Color;
+	#elif TEXTURE0_ENV_SRC1_RGB == 1 || TEXTURE0_ENV_SRC1_RGB == ASL_TEXTURE1
+		arg1 = texture1Color;
+	#elif TEXTURE0_ENV_SRC1_RGB == 2 || TEXTURE0_ENV_SRC1_RGB == ASL_TEXTURE2
+		arg1 = texture2Color;
+	#elif TEXTURE0_ENV_SRC1_RGB == 3 || TEXTURE0_ENV_SRC1_RGB == ASL_TEXTURE3
+		arg1 = texture3Color;
+	#elif TEXTURE0_ENV_SRC1_RGB == ASL_CONSTANT
+		arg1 = u_texture0EnvColor;
+	#elif TEXTURE0_ENV_SRC1_RGB == ASL_PRIMARY_COLOR
+		arg1 = v_frontColor;
+	#elif TEXTURE0_ENV_SRC1_RGB == ASL_PREVIOUS
+		arg1 = color;
+	#else 
+		#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_SRC1_RGB unrecognized
+	#endif
+	
+	#if TEXTURE0_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg1.rgb = 1.0 - arg1.rgb;
+	#elif TEXTURE0_ENV_OPERAND1_RGB == ASL_SRC_ALPHA
+		arg1.rgb = arg1.aaa;
+	#elif TEXTURE0_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.rgb = 1.0 - arg1.aaa;
+	#endif
+	
+	#if TEXTURE0_ENV_SRC1_ALPHA == 0 || TEXTURE0_ENV_SRC1_ALPHA == ASL_TEXTURE0 || TEXTURE0_ENV_SRC1_ALPHA == ASL_TEXTURE
+		arg1.a = texture0Color.a;
+	#elif TEXTURE0_ENV_SRC1_ALPHA == 1 || TEXTURE0_ENV_SRC1_ALPHA == ASL_TEXTURE1
+		arg1.a = texture1Color.a;
+	#elif TEXTURE0_ENV_SRC1_ALPHA == 2 || TEXTURE0_ENV_SRC1_ALPHA == ASL_TEXTURE2
+		arg1.a = texture2Color.a;
+	#elif TEXTURE0_ENV_SRC1_ALPHA == 3 || TEXTURE0_ENV_SRC1_ALPHA == ASL_TEXTURE3
+		arg1.a = texture3Color.a;
+	#elif TEXTURE0_ENV_SRC1_ALPHA == ASL_CONSTANT
+		arg1.a = u_texture0EnvColor.a;
+	#elif TEXTURE0_ENV_SRC1_ALPHA == ASL_PRIMARY_COLOR
+		arg1.a = v_frontColor.a;
+	#elif TEXTURE0_ENV_SRC1_ALPHA == ASL_PREVIOUS
+		arg1.a = color.a;
+	#else 
+		#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_SRC1_ALPHA unrecognized
+	#endif
+	
+	#if TEXTURE0_ENV_OPERAND1_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.a = 1.0 - arg1.a;
+	#endif
+	
+	#if ASL_INTERPOLATE == TEXTURE0_ENV_COMBINE_RGB || ASL_MODULATE_ADD_ATI == TEXTURE0_ENV_COMBINE_RGB || ASL_INTERPOLATE == TEXTURE0_ENV_COMBINE_ALPHA || ASL_MODULATE_ADD_ATI == TEXTURE0_ENV_COMBINE_ALPHA 	
+		#define NEED_ARG2_TEXTURE0 1
+	#else
+		#define NEED_ARG2_TEXTURE0 0
+	#endif
+
+	#if NEED_ARG2_TEXTURE0
+		float4 arg2;
+		#if TEXTURE0_ENV_SRC2_RGB == 0 || TEXTURE0_ENV_SRC2_RGB == ASL_TEXTURE0 || TEXTURE0_ENV_SRC2_RGB == ASL_TEXTURE
+			arg2 = texture0Color;
+		#elif TEXTURE0_ENV_SRC2_RGB == 1 || TEXTURE0_ENV_SRC2_RGB == ASL_TEXTURE1
+			arg2 = texture1Color;
+		#elif TEXTURE0_ENV_SRC2_RGB == 2 || TEXTURE0_ENV_SRC2_RGB == ASL_TEXTURE2
+			arg2 = texture2Color;
+		#elif TEXTURE0_ENV_SRC2_RGB == 3 || TEXTURE0_ENV_SRC2_RGB == ASL_TEXTURE3
+			arg2 = texture3Color;
+		#elif TEXTURE0_ENV_SRC2_RGB == ASL_CONSTANT
+			arg2 = u_texture0EnvColor;
+		#elif TEXTURE0_ENV_SRC2_RGB == ASL_PRIMARY_COLOR
+			arg2 = v_frontColor;
+		#elif TEXTURE0_ENV_SRC2_RGB == ASL_PREVIOUS
+			arg2 = color;
+		#else
+			#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_SRC2_RGB unrecognized
+		#endif
+	
+		#if TEXTURE0_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_COLOR
+			arg2.rgb = 1.0 - arg2.rgb;
+		#elif TEXTURE0_ENV_OPERAND2_RGB == ASL_SRC_ALPHA
+			arg2.rgb = arg2.aaa;
+		#elif TEXTURE0_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.rgb = 1.0 - arg2.aaa;
+		#endif
+
+		#if TEXTURE0_ENV_SRC2_ALPHA == 0 || TEXTURE0_ENV_SRC2_ALPHA == ASL_TEXTURE0
+			arg2.a = texture0Color.a;
+		#elif TEXTURE0_ENV_SRC2_ALPHA == 1 || TEXTURE0_ENV_SRC2_ALPHA == ASL_TEXTURE1
+			arg2.a = texture1Color.a;
+		#elif TEXTURE0_ENV_SRC2_ALPHA == 2 || TEXTURE0_ENV_SRC2_ALPHA == ASL_TEXTURE2
+			arg2.a = texture2Color.a;
+		#elif TEXTURE0_ENV_SRC2_ALPHA == 3 || TEXTURE0_ENV_SRC2_ALPHA == ASL_TEXTURE3
+			arg2.a = texture3Color.a;
+		#elif TEXTURE0_ENV_SRC2_ALPHA == ASL_CONSTANT
+			arg2.a = u_texture0EnvColor.a;
+		#elif TEXTURE0_ENV_SRC2_ALPHA == ASL_PRIMARY_COLOR
+			arg2.a = v_frontColor.a;
+		#elif TEXTURE0_ENV_SRC2_ALPHA == ASL_PREVIOUS
+			arg2.a = color.a;
+		#else
+			#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_SRC2_ALPHA unrecognized
+		#endif
+
+		#if TEXTURE0_ENV_OPERAND2_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.a = 1.0 - arg2.a;
+		#endif
+	#endif
+		
+	// COMBINE_RGB
+	#if TEXTURE0_ENV_COMBINE_RGB == ASL_REPLACE
+		color.rgb = arg0.rgb;
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_MODULATE
+		color.rgb = arg0.rgb * arg1.rgb;
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_ADD
+		color.rgb = arg0.rgb + arg1.rgb;
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_ADD_SIGNED
+		color.rgb = arg0.rgb + arg1.rgb - 0.5;
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_INTERPOLATE
+		color.rgb = lerp(arg1.rgb, arg0.rgb, arg2.rgb);
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_SUBTRACT
+		color.rgb = arg0.rgb - arg1.rgb;
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_MODULATE_ADD_ATI
+		color.rgb = arg0.rgb * arg2.rgb + arg1.rgb;
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_DOT3_RGB
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+	#elif TEXTURE0_ENV_COMBINE_RGB == ASL_DOT3_RGBA
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+		color.a = color.r;
+	#else 
+		#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_COMBINE_RGB unrecognized
+	#endif
+
+	// COMBINE_ALPHA
+	#if TEXTURE0_ENV_COMBINE_ALPHA == ASL_REPLACE
+		color.a = arg0.a;
+	#elif TEXTURE0_ENV_COMBINE_ALPHA == ASL_MODULATE
+		color.a = arg0.a * arg1.a;
+	#elif TEXTURE0_ENV_COMBINE_ALPHA == ASL_ADD
+		color.a = arg0.a + arg1.a;
+	#elif TEXTURE0_ENV_COMBINE_ALPHA == ASL_ADD_SIGNED
+		color.a = arg0.a + arg1.a - 0.5;
+	#elif TEXTURE0_ENV_COMBINE_ALPHA == ASL_INTERPOLATE
+		color.a = lerp(arg1.a, arg0.a, arg2.a);
+	#elif TEXTURE0_ENV_COMBINE_ALPHA == ASL_SUBTRACT
+		color.a = arg0.a - arg1.a;
+	#elif TEXTURE0_ENV_COMBINE_ALPHA == ASL_MODULATE_ADD_ATI
+		color.a = arg0.a * arg2.a + arg1.a;
+	#else 
+		#error TEXTURE0_ENV_MODE == ASL_COMBINE, TEXTURE0_ENV_COMBINE_ALPHA unrecognized
+	#endif
+#elif TEXTURE0_ENV_MODE == -1
+	#error TEXTURE0_ENV_MODE uninitialized
+#else
+	#error TEXTURE0_ENV_MODE unrecognized
+#endif
+		
+	color.rgb = color.rgb * u_texture0EnvRGBScale;
+	color.a = color.a * u_texture0EnvAlphaScale;
+	color = clamp(color, c_zerof, c_onef);
+	
+	return color;
+}
+#endif // TEXTURE0_ENABLED != 0
+
+
+
+#if !defined(TEXCOORD1_ENABLED)
+	#define TEXCOORD1_ENABLED -1
+#endif
+
+#if !defined(TEXTURE1_FORMAT)
+	#define TEXTURE1_FORMAT -1
+#endif
+
+#if !defined(TEXTURE1_ENV_MODE)
+	#define TEXTURE1_ENV_MODE -1
+#endif
+
+#if !defined(TEXTURE1_ENV_COMBINE_RGB)
+	#define TEXTURE1_ENV_COMBINE_RGB -1
+#endif
+
+#if !defined(TEXTURE1_ENV_COMBINE_ALPHA)
+	#define TEXTURE1_ENV_COMBINE_ALPHA -1
+#endif
+
+#if !defined(TEXTURE1_ENV_SRC0_RGB)
+	#define TEXTURE1_ENV_SRC0_RGB -1
+#endif
+
+#if !defined(TEXTURE1_ENV_SRC1_RGB)
+	#define TEXTURE1_ENV_SRC1_RGB -1
+#endif
+
+#if !defined(TEXTURE1_ENV_SRC2_RGB)
+	#define TEXTURE1_ENV_SRC2_RGB -1
+#endif
+
+#if !defined(TEXTURE1_ENV_SRC0_ALPHA)
+	#define TEXTURE1_ENV_SRC0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE1_ENV_SRC1_ALPHA)
+	#define TEXTURE1_ENV_SRC1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE1_ENV_SRC2_ALPHA)
+	#define TEXTURE1_ENV_SRC2_ALPHA -1
+#endif
+
+#if !defined(TEXTURE1_ENV_OPERAND0_RGB)
+	#define TEXTURE1_ENV_OPERAND0_RGB -1
+#endif
+
+#if !defined(TEXTURE1_ENV_OPERAND1_RGB)
+	#define TEXTURE1_ENV_OPERAND1_RGB -1
+#endif
+
+#if !defined(TEXTURE1_ENV_OPERAND2_RGB)
+	#define TEXTURE1_ENV_OPERAND2_RGB -1
+#endif
+
+#if !defined(TEXTURE1_ENV_OPERAND0_ALPHA)
+	#define TEXTURE1_ENV_OPERAND0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE1_ENV_OPERAND1_ALPHA)
+	#define TEXTURE1_ENV_OPERAND1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE1_ENV_OPERAND2_ALPHA)
+	#define TEXTURE1_ENV_OPERAND2_ALPHA -1
+#endif
+
+// Uniforms
+uniform sampler2D u_texture1Sampler;
+uniform int u_texture1Format;
+uniform bool u_texCoord1Enabled;
+uniform int u_texture1EnvMode;
+uniform float4 u_texture1EnvColor;
+uniform int u_texture1EnvCombineRGB;
+uniform int u_texture1EnvCombineAlpha;
+uniform float u_texture1EnvRGBScale;
+uniform float u_texture1EnvAlphaScale;
+uniform float u_texture1EnvBlurAmount;
+
+// Varyings
+#if TEXTURE1_ENABLED != 0
+float4 fetchTexture1Color(float4 v_texCoord1)
+{
+	float4 texCoord1;
+	texCoord1 = v_texCoord1;
+
+	#if TEXTURE1_ENABLED == -1
+	if (u_texture1Enabled) {
+	#endif
+		return tex2D(u_texture1Sampler, texCoord1.xy);
+	#if TEXTURE1_ENABLED == -1
+	}
+	return float4(0.0f, 0.0f, 0.0f, 0.0f);
+	#endif
+}
+
+float4 calcTexture0Environment(float4 color, float4 v_texCoord1, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor)
+{
+#if TEXTURE1_ENV_MODE == ASL_MODULATE
+	#if TEXTURE1_FORMAT == ASL_ALPHA
+		color.a = color.a * texture1Color.a;
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb * texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE_ALPHA
+		color = color * texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_RGB
+		color.rgb = color.rgb * texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_RGBA
+		color = color * texture1Color;
+	#endif
+#elif TEXTURE1_ENV_MODE == ASL_ADD
+	#if TEXTURE1_FORMAT == ASL_ALPHA
+		color.a = color.a * texture1Color.a;
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb + texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = color.rgb + texture1Color.rgb;
+		color.a = color.a * texture1Color.a;
+	#elif TEXTURE1_FORMAT == ASL_RGB
+		color.rgb = color.rgb + texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_RGBA
+		color.rgb = color.rgb + texture1Color.rgb;
+		color.a = color.a * texture1Color.a;
+	#endif
+#elif TEXTURE1_ENV_MODE == ASL_DECAL
+	#if TEXTURE1_FORMAT == ASL_ALPHA
+		// undefined
+		#error TEXTURE1_ENV_MODE == ASL_DECAL, TEXTURE1_FORMAT == ASL_ALPHA
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE
+		// undefined
+		#error TEXTURE1_ENV_MODE == ASL_DECAL, TEXTURE1_FORMAT == ASL_LUMINANCE
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE_ALPHA
+		// undefined
+		#error TEXTURE1_ENV_MODE == ASL_DECAL, TEXTURE1_FORMAT == ASL_LUMINANCE_ALPHA
+	#elif TEXTURE1_FORMAT == ASL_RGB
+		color.rgb = texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, texture1Color.rgb, texture1Color.a);
+	#endif
+#elif TEXTURE1_ENV_MODE == ASL_BLEND
+	#if TEXTURE1_FORMAT == ASL_ALPHA
+		color.a = color.a * texture1Color.a;
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE
+		color.rgb = lerp(color.rgb, u_texture1EnvColor.rgb, texture1Color.rgb);
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = lerp(color.rgb, u_texture1EnvColor.rgb, texture1Color.rgb);
+		color.a = color.a * texture1Color.a;
+	#elif TEXTURE1_FORMAT == ASL_RGB
+		color.rgb = lerp(color.rgb, u_texture1EnvColor.rgb, texture1Color.rgb);
+	#elif TEXTURE1_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, u_texture1EnvColor.rgb, texture1Color.rgb);
+		color.a = color.a * texture1Color.a;
+	#endif
+#elif TEXTURE1_ENV_MODE == ASL_REPLACE
+	#if TEXTURE1_FORMAT == ASL_ALPHA
+		color.a = texture1Color.a;
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE
+		color.rgb = texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_LUMINANCE_ALPHA
+		color = texture1Color;
+	#elif TEXTURE1_FORMAT == ASL_RGB
+		color.rgb = texture1Color.rgb;
+	#elif TEXTURE1_FORMAT == ASL_RGBA
+		color = texture1Color;
+	#endif
+#elif TEXTURE1_ENV_MODE == ASL_BLUR
+	float4 sample0 = texture1Color;
+	float4 sample1 = tex2D(u_texture1Sampler, float2(v_texCoord1.x - u_texture1EnvBlurAmount, v_texCoord1.y - u_texture1EnvBlurAmount));
+	float4 sample2 = tex2D(u_texture1Sampler, float2(v_texCoord1.x + u_texture1EnvBlurAmount, v_texCoord1.y + u_texture1EnvBlurAmount));
+	float4 sample3 = tex2D(u_texture1Sampler, float2(v_texCoord1.x - u_texture1EnvBlurAmount, v_texCoord1.y + u_texture1EnvBlurAmount));
+	float4 sample4 = tex2D(u_texture1Sampler, float2(v_texCoord1.x + u_texture1EnvBlurAmount, v_texCoord1.y - u_texture1EnvBlurAmount));
+	color = (sample0 + sample1 + sample2 + sample3 + sample4) / 5.0;
+#elif TEXTURE1_ENV_MODE == ASL_COMBINE
+	float4 arg0;
+	float4 arg1;
+
+	#if TEXTURE1_ENV_SRC0_RGB == 0 || TEXTURE1_ENV_SRC0_RGB == ASL_TEXTURE0 || TEXTURE1_ENV_SRC0_RGB == ASL_TEXTURE
+		arg0 = texture0Color;
+	#elif TEXTURE1_ENV_SRC0_RGB == 1 || TEXTURE1_ENV_SRC0_RGB == ASL_TEXTURE1
+		arg0 = texture1Color;
+	#elif TEXTURE1_ENV_SRC0_RGB == 2 || TEXTURE1_ENV_SRC0_RGB == ASL_TEXTURE2
+		arg0 = texture2Color;
+	#elif TEXTURE1_ENV_SRC0_RGB == 3 || TEXTURE1_ENV_SRC0_RGB == ASL_TEXTURE3
+		arg0 = texture3Color;
+	#elif TEXTURE1_ENV_SRC0_RGB == ASL_CONSTANT
+		arg0 = u_texture1EnvColor;
+	#elif TEXTURE1_ENV_SRC0_RGB == ASL_PRIMARY_COLOR
+		arg0 = v_frontColor;
+	#elif TEXTURE1_ENV_SRC0_RGB == ASL_PREVIOUS
+		arg0 = color;
+	#else 
+		#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_SRC0_RGB unrecognized
+#endif
+
+	#if TEXTURE1_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg0.rgb = 1.0 - arg0.rgb;
+	#elif TEXTURE1_ENV_OPERAND0_RGB == ASL_SRC_ALPHA
+		arg0.rgb = arg0.aaa;
+	#elif TEXTURE1_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.rgb = 1.0 - arg0.aaa;
+	#endif
+	
+	#if TEXTURE1_ENV_SRC0_ALPHA == 0 || TEXTURE1_ENV_SRC0_ALPHA == ASL_TEXTURE0 || TEXTURE1_ENV_SRC0_ALPHA == ASL_TEXTURE
+		arg0.a = texture0Color.a;
+	#elif TEXTURE1_ENV_SRC0_ALPHA == 1 || TEXTURE1_ENV_SRC0_ALPHA == ASL_TEXTURE1
+		arg0.a = texture1Color.a;
+	#elif TEXTURE1_ENV_SRC0_ALPHA == 2 || TEXTURE1_ENV_SRC0_ALPHA == ASL_TEXTURE2
+		arg0.a = texture2Color.a;
+	#elif TEXTURE1_ENV_SRC0_ALPHA == 3 || TEXTURE1_ENV_SRC0_ALPHA == ASL_TEXTURE3
+		arg0.a = texture3Color.a;
+	#elif TEXTURE1_ENV_SRC0_ALPHA == ASL_CONSTANT
+		arg0.a = u_texture1EnvColor.a;
+	#elif TEXTURE1_ENV_SRC0_ALPHA == ASL_PRIMARY_COLOR
+		arg0.a = v_frontColor.a;
+	#elif TEXTURE1_ENV_SRC0_ALPHA == ASL_PREVIOUS
+		arg0.a = color.a;
+	#else 
+		#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_SRC0_ALPHA unrecognized
+	#endif
+		
+	#if TEXTURE1_ENV_OPERAND0_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.a = 1.0 - arg0.a;
+	#endif
+		
+	#if TEXTURE1_ENV_SRC1_RGB == 0 || TEXTURE1_ENV_SRC1_RGB == ASL_TEXTURE0 || TEXTURE1_ENV_SRC1_RGB == ASL_TEXTURE
+		arg1 = texture0Color;
+	#elif TEXTURE1_ENV_SRC1_RGB == 1 || TEXTURE1_ENV_SRC1_RGB == ASL_TEXTURE1
+		arg1 = texture1Color;
+	#elif TEXTURE1_ENV_SRC1_RGB == 2 || TEXTURE1_ENV_SRC1_RGB == ASL_TEXTURE2
+		arg1 = texture2Color;
+	#elif TEXTURE1_ENV_SRC1_RGB == 3 || TEXTURE1_ENV_SRC1_RGB == ASL_TEXTURE3
+		arg1 = texture3Color;
+	#elif TEXTURE1_ENV_SRC1_RGB == ASL_CONSTANT
+		arg1 = u_texture1EnvColor;
+	#elif TEXTURE1_ENV_SRC1_RGB == ASL_PRIMARY_COLOR
+		arg1 = v_frontColor;
+	#elif TEXTURE1_ENV_SRC1_RGB == ASL_PREVIOUS
+		arg1 = color;
+	#else 
+		#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_SRC1_RGB unrecognized
+	#endif
+	
+	#if TEXTURE1_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg1.rgb = 1.0 - arg1.rgb;
+	#elif TEXTURE1_ENV_OPERAND1_RGB == ASL_SRC_ALPHA
+		arg1.rgb = arg1.aaa;
+	#elif TEXTURE1_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.rgb = 1.0 - arg1.aaa;
+	#endif
+	
+	#if TEXTURE1_ENV_SRC1_ALPHA == 0 || TEXTURE1_ENV_SRC1_ALPHA == ASL_TEXTURE0 || TEXTURE1_ENV_SRC1_ALPHA == ASL_TEXTURE
+		arg1.a = texture0Color.a;
+	#elif TEXTURE1_ENV_SRC1_ALPHA == 1 || TEXTURE1_ENV_SRC1_ALPHA == ASL_TEXTURE1
+		arg1.a = texture1Color.a;
+	#elif TEXTURE1_ENV_SRC1_ALPHA == 2 || TEXTURE1_ENV_SRC1_ALPHA == ASL_TEXTURE2
+		arg1.a = texture2Color.a;
+	#elif TEXTURE1_ENV_SRC1_ALPHA == 3 || TEXTURE1_ENV_SRC1_ALPHA == ASL_TEXTURE3
+		arg1.a = texture3Color.a;
+	#elif TEXTURE1_ENV_SRC1_ALPHA == ASL_CONSTANT
+		arg1.a = u_texture1EnvColor.a;
+	#elif TEXTURE1_ENV_SRC1_ALPHA == ASL_PRIMARY_COLOR
+		arg1.a = v_frontColor.a;
+	#elif TEXTURE1_ENV_SRC1_ALPHA == ASL_PREVIOUS
+		arg1.a = color.a;
+	#else 
+		#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_SRC1_ALPHA unrecognized
+	#endif
+	
+	#if TEXTURE1_ENV_OPERAND1_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.a = 1.0 - arg1.a;
+	#endif
+	
+	#if ASL_INTERPOLATE == TEXTURE1_ENV_COMBINE_RGB || ASL_MODULATE_ADD_ATI == TEXTURE1_ENV_COMBINE_RGB || ASL_INTERPOLATE == TEXTURE1_ENV_COMBINE_ALPHA || ASL_MODULATE_ADD_ATI == TEXTURE1_ENV_COMBINE_ALPHA 	
+		#define NEED_ARG2_TEXTURE1 1
+	#else
+		#define NEED_ARG2_TEXTURE1 0
+	#endif
+
+	#if NEED_ARG2_TEXTURE1
+		float4 arg2;
+		#if TEXTURE1_ENV_SRC2_RGB == 0 || TEXTURE1_ENV_SRC2_RGB == ASL_TEXTURE0 || TEXTURE1_ENV_SRC2_RGB == ASL_TEXTURE
+			arg2 = texture0Color;
+		#elif TEXTURE1_ENV_SRC2_RGB == 1 || TEXTURE1_ENV_SRC2_RGB == ASL_TEXTURE1
+			arg2 = texture1Color;
+		#elif TEXTURE1_ENV_SRC2_RGB == 2 || TEXTURE1_ENV_SRC2_RGB == ASL_TEXTURE2
+			arg2 = texture2Color;
+		#elif TEXTURE1_ENV_SRC2_RGB == 3 || TEXTURE1_ENV_SRC2_RGB == ASL_TEXTURE3
+			arg2 = texture3Color;
+		#elif TEXTURE1_ENV_SRC2_RGB == ASL_CONSTANT
+			arg2 = u_texture1EnvColor;
+		#elif TEXTURE1_ENV_SRC2_RGB == ASL_PRIMARY_COLOR
+			arg2 = v_frontColor;
+		#elif TEXTURE1_ENV_SRC2_RGB == ASL_PREVIOUS
+			arg2 = color;
+		#else
+			#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_SRC2_RGB unrecognized
+		#endif
+	
+		#if TEXTURE1_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_COLOR
+			arg2.rgb = 1.0 - arg2.rgb;
+		#elif TEXTURE1_ENV_OPERAND2_RGB == ASL_SRC_ALPHA
+			arg2.rgb = arg2.aaa;
+		#elif TEXTURE1_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.rgb = 1.0 - arg2.aaa;
+		#endif
+
+		#if TEXTURE1_ENV_SRC2_ALPHA == 0 || TEXTURE1_ENV_SRC2_ALPHA == ASL_TEXTURE0
+			arg2.a = texture0Color.a;
+		#elif TEXTURE1_ENV_SRC2_ALPHA == 1 || TEXTURE1_ENV_SRC2_ALPHA == ASL_TEXTURE1
+			arg2.a = texture1Color.a;
+		#elif TEXTURE1_ENV_SRC2_ALPHA == 2 || TEXTURE1_ENV_SRC2_ALPHA == ASL_TEXTURE2
+			arg2.a = texture2Color.a;
+		#elif TEXTURE1_ENV_SRC2_ALPHA == 3 || TEXTURE1_ENV_SRC2_ALPHA == ASL_TEXTURE3
+			arg2.a = texture3Color.a;
+		#elif TEXTURE1_ENV_SRC2_ALPHA == ASL_CONSTANT
+			arg2.a = u_texture1EnvColor.a;
+		#elif TEXTURE1_ENV_SRC2_ALPHA == ASL_PRIMARY_COLOR
+			arg2.a = v_frontColor.a;
+		#elif TEXTURE1_ENV_SRC2_ALPHA == ASL_PREVIOUS
+			arg2.a = color.a;
+		#else
+			#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_SRC2_ALPHA unrecognized
+		#endif
+
+		#if TEXTURE1_ENV_OPERAND2_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.a = 1.0 - arg2.a;
+		#endif
+	#endif
+		
+	// COMBINE_RGB
+	#if TEXTURE1_ENV_COMBINE_RGB == ASL_REPLACE
+		color.rgb = arg0.rgb;
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_MODULATE
+		color.rgb = arg0.rgb * arg1.rgb;
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_ADD
+		color.rgb = arg0.rgb + arg1.rgb;
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_ADD_SIGNED
+		color.rgb = arg0.rgb + arg1.rgb - 0.5;
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_INTERPOLATE
+		color.rgb = lerp(arg1.rgb, arg0.rgb, arg2.rgb);
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_SUBTRACT
+		color.rgb = arg0.rgb - arg1.rgb;
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_MODULATE_ADD_ATI
+		color.rgb = arg0.rgb * arg2.rgb + arg1.rgb;
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_DOT3_RGB
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+	#elif TEXTURE1_ENV_COMBINE_RGB == ASL_DOT3_RGBA
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+		color.a = color.r;
+	#else 
+		#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_COMBINE_RGB unrecognized
+	#endif
+
+	// COMBINE_ALPHA
+	#if TEXTURE1_ENV_COMBINE_ALPHA == ASL_REPLACE
+		color.a = arg0.a;
+	#elif TEXTURE1_ENV_COMBINE_ALPHA == ASL_MODULATE
+		color.a = arg0.a * arg1.a;
+	#elif TEXTURE1_ENV_COMBINE_ALPHA == ASL_ADD
+		color.a = arg0.a + arg1.a;
+	#elif TEXTURE1_ENV_COMBINE_ALPHA == ASL_ADD_SIGNED
+		color.a = arg0.a + arg1.a - 0.5;
+	#elif TEXTURE1_ENV_COMBINE_ALPHA == ASL_INTERPOLATE
+		color.a = lerp(arg1.a, arg0.a, arg2.a);
+	#elif TEXTURE1_ENV_COMBINE_ALPHA == ASL_SUBTRACT
+		color.a = arg0.a - arg1.a;
+	#elif TEXTURE1_ENV_COMBINE_ALPHA == ASL_MODULATE_ADD_ATI
+		color.a = arg0.a * arg2.a + arg1.a;
+	#else 
+		#error TEXTURE1_ENV_MODE == ASL_COMBINE, TEXTURE1_ENV_COMBINE_ALPHA unrecognized
+	#endif
+#elif TEXTURE1_ENV_MODE == -1
+	#error TEXTURE1_ENV_MODE uninitialized
+#else
+	#error TEXTURE1_ENV_MODE unrecognized
+#endif
+		
+	color.rgb = color.rgb * u_texture1EnvRGBScale;
+	color.a = color.a * u_texture1EnvAlphaScale;
+	color = clamp(color, c_zerof, c_onef);
+	return color;
+}
+#endif // TEXTURE1_ENABLED != 0
+
+
+
+#if !defined(TEXCOORD2_ENABLED)
+	#define TEXCOORD2_ENABLED -1
+#endif
+
+#if !defined(TEXTURE2_FORMAT)
+	#define TEXTURE2_FORMAT -1
+#endif
+
+#if !defined(TEXTURE2_ENV_MODE)
+	#define TEXTURE2_ENV_MODE -1
+#endif
+
+#if !defined(TEXTURE2_ENV_COMBINE_RGB)
+	#define TEXTURE2_ENV_COMBINE_RGB -1
+#endif
+
+#if !defined(TEXTURE2_ENV_COMBINE_ALPHA)
+	#define TEXTURE2_ENV_COMBINE_ALPHA -1
+#endif
+
+#if !defined(TEXTURE2_ENV_SRC0_RGB)
+	#define TEXTURE2_ENV_SRC0_RGB -1
+#endif
+
+#if !defined(TEXTURE2_ENV_SRC1_RGB)
+	#define TEXTURE2_ENV_SRC1_RGB -1
+#endif
+
+#if !defined(TEXTURE2_ENV_SRC2_RGB)
+	#define TEXTURE2_ENV_SRC2_RGB -1
+#endif
+
+#if !defined(TEXTURE2_ENV_SRC0_ALPHA)
+	#define TEXTURE2_ENV_SRC0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE2_ENV_SRC1_ALPHA)
+	#define TEXTURE2_ENV_SRC1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE2_ENV_SRC2_ALPHA)
+	#define TEXTURE2_ENV_SRC2_ALPHA -1
+#endif
+
+#if !defined(TEXTURE2_ENV_OPERAND0_RGB)
+	#define TEXTURE2_ENV_OPERAND0_RGB -1
+#endif
+
+#if !defined(TEXTURE2_ENV_OPERAND1_RGB)
+	#define TEXTURE2_ENV_OPERAND1_RGB -1
+#endif
+
+#if !defined(TEXTURE2_ENV_OPERAND2_RGB)
+	#define TEXTURE2_ENV_OPERAND2_RGB -1
+#endif
+
+#if !defined(TEXTURE2_ENV_OPERAND0_ALPHA)
+	#define TEXTURE2_ENV_OPERAND0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE2_ENV_OPERAND1_ALPHA)
+	#define TEXTURE2_ENV_OPERAND1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE2_ENV_OPERAND2_ALPHA)
+	#define TEXTURE2_ENV_OPERAND2_ALPHA -1
+#endif
+
+// Uniforms
+uniform sampler2D u_texture2Sampler;
+uniform int u_texture2Format;
+uniform bool u_texCoord2Enabled;
+uniform int u_texture2EnvMode;
+uniform float4 u_texture2EnvColor;
+uniform int u_texture2EnvCombineRGB;
+uniform int u_texture2EnvCombineAlpha;
+uniform float u_texture2EnvRGBScale;
+uniform float u_texture2EnvAlphaScale;
+uniform float u_texture2EnvBlurAmount;
+
+#if TEXTURE2_ENABLED != 0
+float4 fetchTexture2Color(float4 v_texCoord2)
+{
+	float4 texCoord2;
+	texCoord2 = v_texCoord2;
+
+	#if TEXTURE2_ENABLED == -1
+	if (u_texture2Enabled) {
+	#endif
+		return tex2D(u_texture2Sampler, texCoord2.xy);
+	#if TEXTURE2_ENABLED == -1
+	}
+	return float4(0.0f, 0.0f, 0.0f, 0.0f);
+	#endif
+}
+
+float4 calcTexture2Environment(float4 color, float4 v_texCoord2, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor)
+{	
+#if TEXTURE2_ENV_MODE == ASL_MODULATE
+	#if TEXTURE2_FORMAT == ASL_ALPHA
+		color.a = color.a * texture2Color.a;
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb * texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE_ALPHA
+		color = color * texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_RGB
+		color.rgb = color.rgb * texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_RGBA
+		color = color * texture2Color;
+	#endif
+#elif TEXTURE2_ENV_MODE == ASL_ADD
+	#if TEXTURE2_FORMAT == ASL_ALPHA
+		color.a = color.a * texture2Color.a;
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb + texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = color.rgb + texture2Color.rgb;
+		color.a = color.a * texture2Color.a;
+	#elif TEXTURE2_FORMAT == ASL_RGB
+		color.rgb = color.rgb + texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_RGBA
+		color.rgb = color.rgb + texture2Color.rgb;
+		color.a = color.a * texture2Color.a;
+	#endif
+#elif TEXTURE2_ENV_MODE == ASL_DECAL
+	#if TEXTURE2_FORMAT == ASL_ALPHA
+		// undefined
+		#error TEXTURE2_ENV_MODE == ASL_DECAL, TEXTURE2_FORMAT == ASL_ALPHA
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE
+		// undefined
+		#error TEXTURE2_ENV_MODE == ASL_DECAL, TEXTURE2_FORMAT == ASL_LUMINANCE
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE_ALPHA
+		// undefined
+		#error TEXTURE2_ENV_MODE == ASL_DECAL, TEXTURE2_FORMAT == ASL_LUMINANCE_ALPHA
+	#elif TEXTURE2_FORMAT == ASL_RGB
+		color.rgb = texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, texture2Color.rgb, texture2Color.a);
+	#endif
+#elif TEXTURE2_ENV_MODE == ASL_BLEND
+	#if TEXTURE2_FORMAT == ASL_ALPHA
+		color.a = color.a * texture2Color.a;
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE
+		color.rgb = lerp(color.rgb, u_texture2EnvColor.rgb, texture2Color.rgb);
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = lerp(color.rgb, u_texture2EnvColor.rgb, texture2Color.rgb);
+		color.a = color.a * texture2Color.a;
+	#elif TEXTURE2_FORMAT == ASL_RGB
+		color.rgb = lerp(color.rgb, u_texture2EnvColor.rgb, texture2Color.rgb);
+	#elif TEXTURE2_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, u_texture2EnvColor.rgb, texture2Color.rgb);
+		color.a = color.a * texture2Color.a;
+	#endif
+#elif TEXTURE2_ENV_MODE == ASL_REPLACE
+	#if TEXTURE2_FORMAT == ASL_ALPHA
+		color.a = texture2Color.a;
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE
+		color.rgb = texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_LUMINANCE_ALPHA
+		color = texture2Color;
+	#elif TEXTURE2_FORMAT == ASL_RGB
+		color.rgb = texture2Color.rgb;
+	#elif TEXTURE2_FORMAT == ASL_RGBA
+		color = texture2Color;
+	#endif
+#elif TEXTURE2_ENV_MODE == ASL_BLUR
+	float4 sample0 = texture2Color;
+	float4 sample1 = tex2D(u_texture2Sampler, float2(v_texCoord2.x - u_texture2EnvBlurAmount, v_texCoord2.y - u_texture2EnvBlurAmount));
+	float4 sample2 = tex2D(u_texture2Sampler, float2(v_texCoord2.x + u_texture2EnvBlurAmount, v_texCoord2.y + u_texture2EnvBlurAmount));
+	float4 sample3 = tex2D(u_texture2Sampler, float2(v_texCoord2.x - u_texture2EnvBlurAmount, v_texCoord2.y + u_texture2EnvBlurAmount));
+	float4 sample4 = tex2D(u_texture2Sampler, float2(v_texCoord2.x + u_texture2EnvBlurAmount, v_texCoord2.y - u_texture2EnvBlurAmount));
+	color = (sample0 + sample1 + sample2 + sample3 + sample4) / 5.0;
+#elif TEXTURE2_ENV_MODE == ASL_COMBINE
+	float4 arg0;
+	float4 arg1;
+
+	#if TEXTURE2_ENV_SRC0_RGB == 0 || TEXTURE2_ENV_SRC0_RGB == ASL_TEXTURE0 || TEXTURE2_ENV_SRC0_RGB == ASL_TEXTURE
+		arg0 = texture0Color;
+	#elif TEXTURE2_ENV_SRC0_RGB == 1 || TEXTURE2_ENV_SRC0_RGB == ASL_TEXTURE1
+		arg0 = texture1Color;
+	#elif TEXTURE2_ENV_SRC0_RGB == 2 || TEXTURE2_ENV_SRC0_RGB == ASL_TEXTURE2
+		arg0 = texture2Color;
+	#elif TEXTURE2_ENV_SRC0_RGB == 3 || TEXTURE2_ENV_SRC0_RGB == ASL_TEXTURE3
+		arg0 = texture3Color;
+	#elif TEXTURE2_ENV_SRC0_RGB == ASL_CONSTANT
+		arg0 = u_texture2EnvColor;
+	#elif TEXTURE2_ENV_SRC0_RGB == ASL_PRIMARY_COLOR
+		arg0 = v_frontColor;
+	#elif TEXTURE2_ENV_SRC0_RGB == ASL_PREVIOUS
+		arg0 = color;
+	#else 
+		#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_SRC0_RGB unrecognized
+#endif
+
+	#if TEXTURE2_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg0.rgb = 1.0 - arg0.rgb;
+	#elif TEXTURE2_ENV_OPERAND0_RGB == ASL_SRC_ALPHA
+		arg0.rgb = arg0.aaa;
+	#elif TEXTURE2_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.rgb = 1.0 - arg0.aaa;
+	#endif
+	
+	#if TEXTURE2_ENV_SRC0_ALPHA == 0 || TEXTURE2_ENV_SRC0_ALPHA == ASL_TEXTURE0 || TEXTURE2_ENV_SRC0_ALPHA == ASL_TEXTURE
+		arg0.a = texture0Color.a;
+	#elif TEXTURE2_ENV_SRC0_ALPHA == 1 || TEXTURE2_ENV_SRC0_ALPHA == ASL_TEXTURE1
+		arg0.a = texture1Color.a;
+	#elif TEXTURE2_ENV_SRC0_ALPHA == 2 || TEXTURE2_ENV_SRC0_ALPHA == ASL_TEXTURE2
+		arg0.a = texture2Color.a;
+	#elif TEXTURE2_ENV_SRC0_ALPHA == 3 || TEXTURE2_ENV_SRC0_ALPHA == ASL_TEXTURE3
+		arg0.a = texture3Color.a;
+	#elif TEXTURE2_ENV_SRC0_ALPHA == ASL_CONSTANT
+		arg0.a = u_texture2EnvColor.a;
+	#elif TEXTURE2_ENV_SRC0_ALPHA == ASL_PRIMARY_COLOR
+		arg0.a = v_frontColor.a;
+	#elif TEXTURE2_ENV_SRC0_ALPHA == ASL_PREVIOUS
+		arg0.a = color.a;
+	#else 
+		#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_SRC0_ALPHA unrecognized
+	#endif
+		
+	#if TEXTURE2_ENV_OPERAND0_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.a = 1.0 - arg0.a;
+	#endif
+		
+	#if TEXTURE2_ENV_SRC1_RGB == 0 || TEXTURE2_ENV_SRC1_RGB == ASL_TEXTURE0 || TEXTURE2_ENV_SRC1_RGB == ASL_TEXTURE
+		arg1 = texture0Color;
+	#elif TEXTURE2_ENV_SRC1_RGB == 1 || TEXTURE2_ENV_SRC1_RGB == ASL_TEXTURE1
+		arg1 = texture1Color;
+	#elif TEXTURE2_ENV_SRC1_RGB == 2 || TEXTURE2_ENV_SRC1_RGB == ASL_TEXTURE2
+		arg1 = texture2Color;
+	#elif TEXTURE2_ENV_SRC1_RGB == 3 || TEXTURE2_ENV_SRC1_RGB == ASL_TEXTURE3
+		arg1 = texture3Color;
+	#elif TEXTURE2_ENV_SRC1_RGB == ASL_CONSTANT
+		arg1 = u_texture2EnvColor;
+	#elif TEXTURE2_ENV_SRC1_RGB == ASL_PRIMARY_COLOR
+		arg1 = v_frontColor;
+	#elif TEXTURE2_ENV_SRC1_RGB == ASL_PREVIOUS
+		arg1 = color;
+	#else 
+		#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_SRC1_RGB unrecognized
+	#endif
+	
+	#if TEXTURE2_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg1.rgb = 1.0 - arg1.rgb;
+	#elif TEXTURE2_ENV_OPERAND1_RGB == ASL_SRC_ALPHA
+		arg1.rgb = arg1.aaa;
+	#elif TEXTURE2_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.rgb = 1.0 - arg1.aaa;
+	#endif
+	
+	#if TEXTURE2_ENV_SRC1_ALPHA == 0 || TEXTURE2_ENV_SRC1_ALPHA == ASL_TEXTURE0 || TEXTURE2_ENV_SRC1_ALPHA == ASL_TEXTURE
+		arg1.a = texture0Color.a;
+	#elif TEXTURE2_ENV_SRC1_ALPHA == 1 || TEXTURE2_ENV_SRC1_ALPHA == ASL_TEXTURE1
+		arg1.a = texture1Color.a;
+	#elif TEXTURE2_ENV_SRC1_ALPHA == 2 || TEXTURE2_ENV_SRC1_ALPHA == ASL_TEXTURE2
+		arg1.a = texture2Color.a;
+	#elif TEXTURE2_ENV_SRC1_ALPHA == 3 || TEXTURE2_ENV_SRC1_ALPHA == ASL_TEXTURE3
+		arg1.a = texture3Color.a;
+	#elif TEXTURE2_ENV_SRC1_ALPHA == ASL_CONSTANT
+		arg1.a = u_texture2EnvColor.a;
+	#elif TEXTURE2_ENV_SRC1_ALPHA == ASL_PRIMARY_COLOR
+		arg1.a = v_frontColor.a;
+	#elif TEXTURE2_ENV_SRC1_ALPHA == ASL_PREVIOUS
+		arg1.a = color.a;
+	#else 
+		#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_SRC1_ALPHA unrecognized
+	#endif
+	
+	#if TEXTURE2_ENV_OPERAND1_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.a = 1.0 - arg1.a;
+	#endif
+	
+	#if ASL_INTERPOLATE == TEXTURE2_ENV_COMBINE_RGB || ASL_MODULATE_ADD_ATI == TEXTURE2_ENV_COMBINE_RGB || ASL_INTERPOLATE == TEXTURE2_ENV_COMBINE_ALPHA || ASL_MODULATE_ADD_ATI == TEXTURE2_ENV_COMBINE_ALPHA 	
+		#define NEED_ARG2_TEXTURE2 1
+	#else
+		#define NEED_ARG2_TEXTURE2 0
+	#endif
+
+	#if NEED_ARG2_TEXTURE2
+		float4 arg2;
+		#if TEXTURE2_ENV_SRC2_RGB == 0 || TEXTURE2_ENV_SRC2_RGB == ASL_TEXTURE0 || TEXTURE2_ENV_SRC2_RGB == ASL_TEXTURE
+			arg2 = texture0Color;
+		#elif TEXTURE2_ENV_SRC2_RGB == 1 || TEXTURE2_ENV_SRC2_RGB == ASL_TEXTURE1
+			arg2 = texture1Color;
+		#elif TEXTURE2_ENV_SRC2_RGB == 2 || TEXTURE2_ENV_SRC2_RGB == ASL_TEXTURE2
+			arg2 = texture2Color;
+		#elif TEXTURE2_ENV_SRC2_RGB == 3 || TEXTURE2_ENV_SRC2_RGB == ASL_TEXTURE3
+			arg2 = texture3Color;
+		#elif TEXTURE2_ENV_SRC2_RGB == ASL_CONSTANT
+			arg2 = u_texture2EnvColor;
+		#elif TEXTURE2_ENV_SRC2_RGB == ASL_PRIMARY_COLOR
+			arg2 = v_frontColor;
+		#elif TEXTURE2_ENV_SRC2_RGB == ASL_PREVIOUS
+			arg2 = color;
+		#else
+			#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_SRC2_RGB unrecognized
+		#endif
+	
+		#if TEXTURE2_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_COLOR
+			arg2.rgb = 1.0 - arg2.rgb;
+		#elif TEXTURE2_ENV_OPERAND2_RGB == ASL_SRC_ALPHA
+			arg2.rgb = arg2.aaa;
+		#elif TEXTURE2_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.rgb = 1.0 - arg2.aaa;
+		#endif
+
+		#if TEXTURE2_ENV_SRC2_ALPHA == 0 || TEXTURE2_ENV_SRC2_ALPHA == ASL_TEXTURE0
+			arg2.a = texture0Color.a;
+		#elif TEXTURE2_ENV_SRC2_ALPHA == 1 || TEXTURE2_ENV_SRC2_ALPHA == ASL_TEXTURE1
+			arg2.a = texture1Color.a;
+		#elif TEXTURE2_ENV_SRC2_ALPHA == 2 || TEXTURE2_ENV_SRC2_ALPHA == ASL_TEXTURE2
+			arg2.a = texture2Color.a;
+		#elif TEXTURE2_ENV_SRC2_ALPHA == 3 || TEXTURE2_ENV_SRC2_ALPHA == ASL_TEXTURE3
+			arg2.a = texture3Color.a;
+		#elif TEXTURE2_ENV_SRC2_ALPHA == ASL_CONSTANT
+			arg2.a = u_texture2EnvColor.a;
+		#elif TEXTURE2_ENV_SRC2_ALPHA == ASL_PRIMARY_COLOR
+			arg2.a = v_frontColor.a;
+		#elif TEXTURE2_ENV_SRC2_ALPHA == ASL_PREVIOUS
+			arg2.a = color.a;
+		#else
+			#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_SRC2_ALPHA unrecognized
+		#endif
+
+		#if TEXTURE2_ENV_OPERAND2_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.a = 1.0 - arg2.a;
+		#endif
+	#endif
+		
+	// COMBINE_RGB
+	#if TEXTURE2_ENV_COMBINE_RGB == ASL_REPLACE
+		color.rgb = arg0.rgb;
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_MODULATE
+		color.rgb = arg0.rgb * arg1.rgb;
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_ADD
+		color.rgb = arg0.rgb + arg1.rgb;
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_ADD_SIGNED
+		color.rgb = arg0.rgb + arg1.rgb - 0.5;
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_INTERPOLATE
+		color.rgb = lerp(arg1.rgb, arg0.rgb, arg2.rgb);
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_SUBTRACT
+		color.rgb = arg0.rgb - arg1.rgb;
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_MODULATE_ADD_ATI
+		color.rgb = arg0.rgb * arg2.rgb + arg1.rgb;
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_DOT3_RGB
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+	#elif TEXTURE2_ENV_COMBINE_RGB == ASL_DOT3_RGBA
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+		color.a = color.r;
+	#else 
+		#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_COMBINE_RGB unrecognized
+	#endif
+
+	// COMBINE_ALPHA
+	#if TEXTURE2_ENV_COMBINE_ALPHA == ASL_REPLACE
+		color.a = arg0.a;
+	#elif TEXTURE2_ENV_COMBINE_ALPHA == ASL_MODULATE
+		color.a = arg0.a * arg1.a;
+	#elif TEXTURE2_ENV_COMBINE_ALPHA == ASL_ADD
+		color.a = arg0.a + arg1.a;
+	#elif TEXTURE2_ENV_COMBINE_ALPHA == ASL_ADD_SIGNED
+		color.a = arg0.a + arg1.a - 0.5;
+	#elif TEXTURE2_ENV_COMBINE_ALPHA == ASL_INTERPOLATE
+		color.a = lerp(arg1.a, arg0.a, arg2.a);
+	#elif TEXTURE2_ENV_COMBINE_ALPHA == ASL_SUBTRACT
+		color.a = arg0.a - arg1.a;
+	#elif TEXTURE2_ENV_COMBINE_ALPHA == ASL_MODULATE_ADD_ATI
+		color.a = arg0.a * arg2.a + arg1.a;
+	#else 
+		#error TEXTURE2_ENV_MODE == ASL_COMBINE, TEXTURE2_ENV_COMBINE_ALPHA unrecognized
+	#endif
+#elif TEXTURE2_ENV_MODE == -1
+	#error TEXTURE2_ENV_MODE uninitialized
+#else
+	#error TEXTURE2_ENV_MODE unrecognized
+#endif
+		
+	color.rgb = color.rgb * u_texture2EnvRGBScale;
+	color.a = color.a * u_texture2EnvAlphaScale;
+	color = clamp(color, c_zerof, c_onef);
+	return color;
+}
+#endif // TEXTURE2_ENABLED != 0
+
+
+
+#if !defined(TEXCOORD3_ENABLED)
+	#define TEXCOORD3_ENABLED -1
+#endif
+
+#if !defined(TEXTURE3_FORMAT)
+	#define TEXTURE3_FORMAT -1
+#endif
+
+#if !defined(TEXTURE3_ENV_MODE)
+	#define TEXTURE3_ENV_MODE -1
+#endif
+
+#if !defined(TEXTURE3_ENV_COMBINE_RGB)
+	#define TEXTURE3_ENV_COMBINE_RGB -1
+#endif
+
+#if !defined(TEXTURE3_ENV_COMBINE_ALPHA)
+	#define TEXTURE3_ENV_COMBINE_ALPHA -1
+#endif
+
+#if !defined(TEXTURE3_ENV_SRC0_RGB)
+	#define TEXTURE3_ENV_SRC0_RGB -1
+#endif
+
+#if !defined(TEXTURE3_ENV_SRC1_RGB)
+	#define TEXTURE3_ENV_SRC1_RGB -1
+#endif
+
+#if !defined(TEXTURE3_ENV_SRC2_RGB)
+	#define TEXTURE3_ENV_SRC2_RGB -1
+#endif
+
+#if !defined(TEXTURE3_ENV_SRC0_ALPHA)
+	#define TEXTURE3_ENV_SRC0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE3_ENV_SRC1_ALPHA)
+	#define TEXTURE3_ENV_SRC1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE3_ENV_SRC2_ALPHA)
+	#define TEXTURE3_ENV_SRC2_ALPHA -1
+#endif
+
+#if !defined(TEXTURE3_ENV_OPERAND0_RGB)
+	#define TEXTURE3_ENV_OPERAND0_RGB -1
+#endif
+
+#if !defined(TEXTURE3_ENV_OPERAND1_RGB)
+	#define TEXTURE3_ENV_OPERAND1_RGB -1
+#endif
+
+#if !defined(TEXTURE3_ENV_OPERAND2_RGB)
+	#define TEXTURE3_ENV_OPERAND2_RGB -1
+#endif
+
+#if !defined(TEXTURE3_ENV_OPERAND0_ALPHA)
+	#define TEXTURE3_ENV_OPERAND0_ALPHA -1
+#endif
+
+#if !defined(TEXTURE3_ENV_OPERAND1_ALPHA)
+	#define TEXTURE3_ENV_OPERAND1_ALPHA -1
+#endif
+
+#if !defined(TEXTURE3_ENV_OPERAND2_ALPHA)
+	#define TEXTURE3_ENV_OPERAND2_ALPHA -1
+#endif
+
+// Uniforms
+uniform sampler2D u_texture3Sampler;
+uniform int u_texture3Format;
+uniform bool u_texCoord3Enabled;
+uniform int u_texture3EnvMode;
+uniform float4 u_texture3EnvColor;
+uniform int u_texture3EnvCombineRGB;
+uniform int u_texture3EnvCombineAlpha;
+uniform float u_texture3EnvRGBScale;
+uniform float u_texture3EnvAlphaScale;
+uniform float u_texture3EnvBlurAmount;
+
+#if TEXTURE3_ENABLED != 0
+float4 fetchTexture3Color(float4 v_texCoord3)
+{
+	float4 texCoord3;
+	texCoord3 = v_texCoord3;
+
+	#if TEXTURE3_ENABLED == -1
+	if (u_texture3Enabled) {
+	#endif
+		return tex2D(u_texture3Sampler, texCoord3.xy);
+	#if TEXTURE3_ENABLED == -1
+	}
+	return float4(0.0f, 0.0f, 0.0f, 0.0f);
+	#endif
+}
+
+float4 calcTexture3Environment(float4 color, float4 v_texCoord3, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor)
+{
+#if TEXTURE3_ENV_MODE == ASL_MODULATE
+	#if TEXTURE3_FORMAT == ASL_ALPHA
+		color.a = color.a * texture3Color.a;
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb * texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE_ALPHA
+		color = color * texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_RGB
+		color.rgb = color.rgb * texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_RGBA
+		color = color * texture3Color;
+	#endif
+#elif TEXTURE3_ENV_MODE == ASL_ADD
+	#if TEXTURE3_FORMAT == ASL_ALPHA
+		color.a = color.a * texture3Color.a;
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE
+		color.rgb = color.rgb + texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = color.rgb + texture3Color.rgb;
+		color.a = color.a * texture3Color.a;
+	#elif TEXTURE3_FORMAT == ASL_RGB
+		color.rgb = color.rgb + texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_RGBA
+		color.rgb = color.rgb + texture3Color.rgb;
+		color.a = color.a * texture3Color.a;
+	#endif
+#elif TEXTURE3_ENV_MODE == ASL_DECAL
+	#if TEXTURE3_FORMAT == ASL_ALPHA
+		// undefined
+		#error TEXTURE3_ENV_MODE == ASL_DECAL, TEXTURE3_FORMAT == ASL_ALPHA
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE
+		// undefined
+		#error TEXTURE3_ENV_MODE == ASL_DECAL, TEXTURE3_FORMAT == ASL_LUMINANCE
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE_ALPHA
+		// undefined
+		#error TEXTURE3_ENV_MODE == ASL_DECAL, TEXTURE3_FORMAT == ASL_LUMINANCE_ALPHA
+	#elif TEXTURE3_FORMAT == ASL_RGB
+		color.rgb = texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, texture3Color.rgb, texture3Color.a);
+	#endif
+#elif TEXTURE3_ENV_MODE == ASL_BLEND
+	#if TEXTURE3_FORMAT == ASL_ALPHA
+		color.a = color.a * texture3Color.a;
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE
+		color.rgb = lerp(color.rgb, u_texture3EnvColor.rgb, texture3Color.rgb);
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE_ALPHA
+		color.rgb = lerp(color.rgb, u_texture3EnvColor.rgb, texture3Color.rgb);
+		color.a = color.a * texture3Color.a;
+	#elif TEXTURE3_FORMAT == ASL_RGB
+		color.rgb = lerp(color.rgb, u_texture3EnvColor.rgb, texture3Color.rgb);
+	#elif TEXTURE3_FORMAT == ASL_RGBA
+		color.rgb = lerp(color.rgb, u_texture3EnvColor.rgb, texture3Color.rgb);
+		color.a = color.a * texture3Color.a;
+	#endif
+#elif TEXTURE3_ENV_MODE == ASL_REPLACE
+	#if TEXTURE3_FORMAT == ASL_ALPHA
+		color.a = texture3Color.a;
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE
+		color.rgb = texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_LUMINANCE_ALPHA
+		color = texture3Color;
+	#elif TEXTURE3_FORMAT == ASL_RGB
+		color.rgb = texture3Color.rgb;
+	#elif TEXTURE3_FORMAT == ASL_RGBA
+		color = texture3Color;
+	#endif
+#elif TEXTURE3_ENV_MODE == ASL_BLUR
+	float4 sample0 = texture3Color;
+	float4 sample1 = tex2D(u_texture3Sampler, float2(v_texCoord3.x - u_texture3EnvBlurAmount, v_texCoord3.y - u_texture3EnvBlurAmount));
+	float4 sample2 = tex2D(u_texture3Sampler, float2(v_texCoord3.x + u_texture3EnvBlurAmount, v_texCoord3.y + u_texture3EnvBlurAmount));
+	float4 sample3 = tex2D(u_texture3Sampler, float2(v_texCoord3.x - u_texture3EnvBlurAmount, v_texCoord3.y + u_texture3EnvBlurAmount));
+	float4 sample4 = tex2D(u_texture3Sampler, float2(v_texCoord3.x + u_texture3EnvBlurAmount, v_texCoord3.y - u_texture3EnvBlurAmount));
+	color = (sample0 + sample1 + sample2 + sample3 + sample4) / 5.0;
+#elif TEXTURE3_ENV_MODE == ASL_COMBINE
+	float4 arg0;
+	float4 arg1;
+
+	#if TEXTURE3_ENV_SRC0_RGB == 0 || TEXTURE3_ENV_SRC0_RGB == ASL_TEXTURE0 || TEXTURE3_ENV_SRC0_RGB == ASL_TEXTURE
+		arg0 = texture0Color;
+	#elif TEXTURE3_ENV_SRC0_RGB == 1 || TEXTURE3_ENV_SRC0_RGB == ASL_TEXTURE1
+		arg0 = texture1Color;
+	#elif TEXTURE3_ENV_SRC0_RGB == 2 || TEXTURE3_ENV_SRC0_RGB == ASL_TEXTURE2
+		arg0 = texture2Color;
+	#elif TEXTURE3_ENV_SRC0_RGB == 3 || TEXTURE3_ENV_SRC0_RGB == ASL_TEXTURE3
+		arg0 = texture3Color;
+	#elif TEXTURE3_ENV_SRC0_RGB == ASL_CONSTANT
+		arg0 = u_texture3EnvColor;
+	#elif TEXTURE3_ENV_SRC0_RGB == ASL_PRIMARY_COLOR
+		arg0 = v_frontColor;
+	#elif TEXTURE3_ENV_SRC0_RGB == ASL_PREVIOUS
+		arg0 = color;
+	#else 
+		#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_SRC0_RGB unrecognized
+#endif
+
+	#if TEXTURE3_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg0.rgb = 1.0 - arg0.rgb;
+	#elif TEXTURE3_ENV_OPERAND0_RGB == ASL_SRC_ALPHA
+		arg0.rgb = arg0.aaa;
+	#elif TEXTURE3_ENV_OPERAND0_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.rgb = 1.0 - arg0.aaa;
+	#endif
+	
+	#if TEXTURE3_ENV_SRC0_ALPHA == 0 || TEXTURE3_ENV_SRC0_ALPHA == ASL_TEXTURE0 || TEXTURE3_ENV_SRC0_ALPHA == ASL_TEXTURE
+		arg0.a = texture0Color.a;
+	#elif TEXTURE3_ENV_SRC0_ALPHA == 1 || TEXTURE3_ENV_SRC0_ALPHA == ASL_TEXTURE1
+		arg0.a = texture1Color.a;
+	#elif TEXTURE3_ENV_SRC0_ALPHA == 2 || TEXTURE3_ENV_SRC0_ALPHA == ASL_TEXTURE2
+		arg0.a = texture2Color.a;
+	#elif TEXTURE3_ENV_SRC0_ALPHA == 3 || TEXTURE3_ENV_SRC0_ALPHA == ASL_TEXTURE3
+		arg0.a = texture3Color.a;
+	#elif TEXTURE3_ENV_SRC0_ALPHA == ASL_CONSTANT
+		arg0.a = u_texture3EnvColor.a;
+	#elif TEXTURE3_ENV_SRC0_ALPHA == ASL_PRIMARY_COLOR
+		arg0.a = v_frontColor.a;
+	#elif TEXTURE3_ENV_SRC0_ALPHA == ASL_PREVIOUS
+		arg0.a = color.a;
+	#else 
+		#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_SRC0_ALPHA unrecognized
+	#endif
+		
+	#if TEXTURE3_ENV_OPERAND0_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg0.a = 1.0 - arg0.a;
+	#endif
+		
+	#if TEXTURE3_ENV_SRC1_RGB == 0 || TEXTURE3_ENV_SRC1_RGB == ASL_TEXTURE0 || TEXTURE3_ENV_SRC1_RGB == ASL_TEXTURE
+		arg1 = texture0Color;
+	#elif TEXTURE3_ENV_SRC1_RGB == 1 || TEXTURE3_ENV_SRC1_RGB == ASL_TEXTURE1
+		arg1 = texture1Color;
+	#elif TEXTURE3_ENV_SRC1_RGB == 2 || TEXTURE3_ENV_SRC1_RGB == ASL_TEXTURE2
+		arg1 = texture2Color;
+	#elif TEXTURE3_ENV_SRC1_RGB == 3 || TEXTURE3_ENV_SRC1_RGB == ASL_TEXTURE3
+		arg1 = texture3Color;
+	#elif TEXTURE3_ENV_SRC1_RGB == ASL_CONSTANT
+		arg1 = u_texture3EnvColor;
+	#elif TEXTURE3_ENV_SRC1_RGB == ASL_PRIMARY_COLOR
+		arg1 = v_frontColor;
+	#elif TEXTURE3_ENV_SRC1_RGB == ASL_PREVIOUS
+		arg1 = color;
+	#else 
+		#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_SRC1_RGB unrecognized
+	#endif
+	
+	#if TEXTURE3_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_COLOR
+		arg1.rgb = 1.0 - arg1.rgb;
+	#elif TEXTURE3_ENV_OPERAND1_RGB == ASL_SRC_ALPHA
+		arg1.rgb = arg1.aaa;
+	#elif TEXTURE3_ENV_OPERAND1_RGB == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.rgb = 1.0 - arg1.aaa;
+	#endif
+	
+	#if TEXTURE3_ENV_SRC1_ALPHA == 0 || TEXTURE3_ENV_SRC1_ALPHA == ASL_TEXTURE0 || TEXTURE3_ENV_SRC1_ALPHA == ASL_TEXTURE
+		arg1.a = texture0Color.a;
+	#elif TEXTURE3_ENV_SRC1_ALPHA == 1 || TEXTURE3_ENV_SRC1_ALPHA == ASL_TEXTURE1
+		arg1.a = texture1Color.a;
+	#elif TEXTURE3_ENV_SRC1_ALPHA == 2 || TEXTURE3_ENV_SRC1_ALPHA == ASL_TEXTURE2
+		arg1.a = texture2Color.a;
+	#elif TEXTURE3_ENV_SRC1_ALPHA == 3 || TEXTURE3_ENV_SRC1_ALPHA == ASL_TEXTURE3
+		arg1.a = texture3Color.a;
+	#elif TEXTURE3_ENV_SRC1_ALPHA == ASL_CONSTANT
+		arg1.a = u_texture3EnvColor.a;
+	#elif TEXTURE3_ENV_SRC1_ALPHA == ASL_PRIMARY_COLOR
+		arg1.a = v_frontColor.a;
+	#elif TEXTURE3_ENV_SRC1_ALPHA == ASL_PREVIOUS
+		arg1.a = color.a;
+	#else 
+		#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_SRC1_ALPHA unrecognized
+	#endif
+	
+	#if TEXTURE3_ENV_OPERAND1_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+		arg1.a = 1.0 - arg1.a;
+	#endif
+	
+	#if ASL_INTERPOLATE == TEXTURE3_ENV_COMBINE_RGB || ASL_MODULATE_ADD_ATI == TEXTURE3_ENV_COMBINE_RGB || ASL_INTERPOLATE == TEXTURE3_ENV_COMBINE_ALPHA || ASL_MODULATE_ADD_ATI == TEXTURE3_ENV_COMBINE_ALPHA 	
+		#define NEED_ARG2_TEXTURE3 1
+	#else
+		#define NEED_ARG2_TEXTURE3 0
+	#endif
+
+	#if NEED_ARG2_TEXTURE3
+		float4 arg2;
+		#if TEXTURE3_ENV_SRC2_RGB == 0 || TEXTURE3_ENV_SRC2_RGB == ASL_TEXTURE0 || TEXTURE3_ENV_SRC2_RGB == ASL_TEXTURE
+			arg2 = texture0Color;
+		#elif TEXTURE3_ENV_SRC2_RGB == 1 || TEXTURE3_ENV_SRC2_RGB == ASL_TEXTURE1
+			arg2 = texture1Color;
+		#elif TEXTURE3_ENV_SRC2_RGB == 2 || TEXTURE3_ENV_SRC2_RGB == ASL_TEXTURE2
+			arg2 = texture2Color;
+		#elif TEXTURE3_ENV_SRC2_RGB == 3 || TEXTURE3_ENV_SRC2_RGB == ASL_TEXTURE3
+			arg2 = texture3Color;
+		#elif TEXTURE3_ENV_SRC2_RGB == ASL_CONSTANT
+			arg2 = u_texture3EnvColor;
+		#elif TEXTURE3_ENV_SRC2_RGB == ASL_PRIMARY_COLOR
+			arg2 = v_frontColor;
+		#elif TEXTURE3_ENV_SRC2_RGB == ASL_PREVIOUS
+			arg2 = color;
+		#else
+			#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_SRC2_RGB unrecognized
+		#endif
+	
+		#if TEXTURE3_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_COLOR
+			arg2.rgb = 1.0 - arg2.rgb;
+		#elif TEXTURE3_ENV_OPERAND2_RGB == ASL_SRC_ALPHA
+			arg2.rgb = arg2.aaa;
+		#elif TEXTURE3_ENV_OPERAND2_RGB == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.rgb = 1.0 - arg2.aaa;
+		#endif
+
+		#if TEXTURE3_ENV_SRC2_ALPHA == 0 || TEXTURE3_ENV_SRC2_ALPHA == ASL_TEXTURE0
+			arg2.a = texture0Color.a;
+		#elif TEXTURE3_ENV_SRC2_ALPHA == 1 || TEXTURE3_ENV_SRC2_ALPHA == ASL_TEXTURE1
+			arg2.a = texture1Color.a;
+		#elif TEXTURE3_ENV_SRC2_ALPHA == 2 || TEXTURE3_ENV_SRC2_ALPHA == ASL_TEXTURE2
+			arg2.a = texture2Color.a;
+		#elif TEXTURE3_ENV_SRC2_ALPHA == 3 || TEXTURE3_ENV_SRC2_ALPHA == ASL_TEXTURE3
+			arg2.a = texture3Color.a;
+		#elif TEXTURE3_ENV_SRC2_ALPHA == ASL_CONSTANT
+			arg2.a = u_texture3EnvColor.a;
+		#elif TEXTURE3_ENV_SRC2_ALPHA == ASL_PRIMARY_COLOR
+			arg2.a = v_frontColor.a;
+		#elif TEXTURE3_ENV_SRC2_ALPHA == ASL_PREVIOUS
+			arg2.a = color.a;
+		#else
+			#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_SRC2_ALPHA unrecognized
+		#endif
+
+		#if TEXTURE3_ENV_OPERAND2_ALPHA == ASL_ONE_MINUS_SRC_ALPHA
+			arg2.a = 1.0 - arg2.a;
+		#endif
+	#endif
+		
+	// COMBINE_RGB
+	#if TEXTURE3_ENV_COMBINE_RGB == ASL_REPLACE
+		color.rgb = arg0.rgb;
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_MODULATE
+		color.rgb = arg0.rgb * arg1.rgb;
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_ADD
+		color.rgb = arg0.rgb + arg1.rgb;
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_ADD_SIGNED
+		color.rgb = arg0.rgb + arg1.rgb - 0.5;
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_INTERPOLATE
+		color.rgb = lerp(arg1.rgb, arg0.rgb, arg2.rgb);
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_SUBTRACT
+		color.rgb = arg0.rgb - arg1.rgb;
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_MODULATE_ADD_ATI
+		color.rgb = arg0.rgb * arg2.rgb + arg1.rgb;
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_DOT3_RGB
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+	#elif TEXTURE3_ENV_COMBINE_RGB == ASL_DOT3_RGBA
+		color.r = 4.0*((arg0.r - 0.5)*(arg1.r - 0.5) + (arg0.g - 0.5)*(arg1.g - 0.5) + (arg0.b - 0.5)*(arg1.b - 0.5));
+		color.g = color.r;
+		color.b = color.r;
+		color.a = color.r;
+	#else 
+		#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_COMBINE_RGB unrecognized
+	#endif
+
+	// COMBINE_ALPHA
+	#if TEXTURE3_ENV_COMBINE_ALPHA == ASL_REPLACE
+		color.a = arg0.a;
+	#elif TEXTURE3_ENV_COMBINE_ALPHA == ASL_MODULATE
+		color.a = arg0.a * arg1.a;
+	#elif TEXTURE3_ENV_COMBINE_ALPHA == ASL_ADD
+		color.a = arg0.a + arg1.a;
+	#elif TEXTURE3_ENV_COMBINE_ALPHA == ASL_ADD_SIGNED
+		color.a = arg0.a + arg1.a - 0.5;
+	#elif TEXTURE3_ENV_COMBINE_ALPHA == ASL_INTERPOLATE
+		color.a = lerp(arg1.a, arg0.a, arg2.a);
+	#elif TEXTURE3_ENV_COMBINE_ALPHA == ASL_SUBTRACT
+		color.a = arg0.a - arg1.a;
+	#elif TEXTURE3_ENV_COMBINE_ALPHA == ASL_MODULATE_ADD_ATI
+		color.a = arg0.a * arg2.a + arg1.a;
+	#else 
+		#error TEXTURE3_ENV_MODE == ASL_COMBINE, TEXTURE3_ENV_COMBINE_ALPHA unrecognized
+	#endif
+#elif TEXTURE3_ENV_MODE == -1
+	#error TEXTURE3_ENV_MODE uninitialized
+#else
+	#error TEXTURE3_ENV_MODE unrecognized
+#endif
+		
+	color.rgb = color.rgb * u_texture3EnvRGBScale;
+	color.a = color.a * u_texture3EnvAlphaScale;
+	color = clamp(color, c_zerof, c_onef);
+	return color;
+}
+#endif // TEXTURE3_ENABLED != 0
+
+#if !defined(ALPHA_FUNC)
+#define ALPHA_FUNC 516
+#endif
+
+
+#define EPSILON 0.0000001  // TODO: depends on precision
+
+#define ASL_NEVER 512 // 0x0200
+#define ASL_LESS 513 // 0x0201
+#define ASL_EQUAL 514 // 0x0202
+#define ASL_LEQUAL 515 // 0x0203
+#define ASL_GREATER 516 // 0x0204
+#define ASL_NOTEQUAL 517 // 0x0205
+#define ASL_GEQUAL 518 // 0x0206
+#define ASL_ALWAYS 519 // 0x0207
+
+#if !defined(ALPHA_FUNC)
+	#define ALPHA_FUNC -1
+#endif
+
+// Uniforms
+uniform int u_alphaFunc;
+uniform float u_alphaFuncValue;
+
+void alphaTest(float alpha) 
+{
+#if ALPHA_FUNC == ASL_ALWAYS
+	return;
+#elif ALPHA_FUNC == ASL_LESS
+	if (alpha >= u_alphaFuncValue) {
+		discard;
+	}
+#elif ALPHA_FUNC == ASL_EQUAL
+	if (u_alphaFuncValue - EPSILON > alpha || alpha > u_alphaFuncValue + EPSILON) {
+		discard;
+	}
+#elif ALPHA_FUNC == ASL_LEQUAL
+	if (alpha > u_alphaFuncValue) {
+		discard;
+	}
+#elif ALPHA_FUNC == ASL_GREATER
+	if (alpha <= u_alphaFuncValue) {
+		discard;
+	}
+#elif ALPHA_FUNC == ASL_NOTEQUAL
+	if (u_alphaFuncValue - EPSILON <= alpha && alpha <= u_alphaFuncValue + EPSILON) {
+		discard;
+	}
+#elif ALPHA_FUNC == ASL_GEQUAL
+	if (alpha < u_alphaFuncValue) {
+		discard;
+	}
+#elif ALPHA_FUNC == ASL_NEVER
+	discard;
+#elif ALPHA_FUNC == -1
+	if (u_alphaFunc == ASL_ALWAYS) {
+		return;
+	} else if (u_alphaFunc == ASL_LESS) {
+		if (alpha >= u_alphaFuncValue) {
+			discard;
+		}
+	} else if (u_alphaFunc == ASL_EQUAL) {
+		if (u_alphaFuncValue - EPSILON > alpha || alpha > u_alphaFuncValue + EPSILON) {
+			discard;
+		}
+	} else if (u_alphaFunc == ASL_LEQUAL) {
+		if (alpha > u_alphaFuncValue) {
+			discard;
+		}
+	} else if (u_alphaFunc == ASL_GREATER) {
+		if (alpha <= u_alphaFuncValue) {
+			discard;
+		}
+	} else if (u_alphaFunc == ASL_NOTEQUAL) {
+		if (u_alphaFuncValue - EPSILON <= alpha && alpha <= u_alphaFuncValue + EPSILON) {
+			discard;
+		}
+	} else if (u_alphaFunc == ASL_GEQUAL) {
+		if (alpha < u_alphaFuncValue) {
+			discard;
+		}
+	} else if (u_alphaFunc == ASL_NEVER) {
+		discard;
+	}
+#endif
+}

@@ -12,6 +12,7 @@
 #include <vitashark.h>
 #include <vitaGL.h>
 #include <zlib.h>
+#include <fnmatch.h>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
@@ -373,13 +374,12 @@ void throw_bad_alloc() {
 so_hook hooks[1];
 
 int SetTexture(void *a1, unsigned int a2, int a3) {
-	*(int *)a3 = *(int *)a3 - 4;
-	printf("SetTexture(%x, %x, %x, %x)\n", a1, a2, a3, *(int *)a3);
-	return SO_CONTINUE(int, hooks[0], a1, a2, a3);
+	//printf("SetTexture(%x, %x, %x, %x)\n", a1, a2, a3, a3 ? *(int *)a3 : 0xDEADBEEF);
+	return SO_CONTINUE(int, hooks[0], a1, a2, 0);
 }
 
 void patch_game(void) {
-	hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
+	//hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
 }
 
 extern void *__aeabi_atexit;
@@ -540,15 +540,26 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 	uint32_t sha1[5];
 	SHA1_CTX ctx;
 	
-	int size = length ? *length : strlen(*string);
+	char *tmp = vglMalloc(1 * 1024 * 1024);
+	char *p = tmp;
+	uint32_t tmp_idx = 0;
+	for (int i = 0; i < count; i++) {
+		int size = length ? length[i] : strlen(string[i]);
+		sceClibMemcpy(p, string[i], size);
+		p[size] = '\n';
+		tmp_idx += size + 1;
+		p = &tmp[tmp_idx];
+	}
+	p[0] = 0;
+	
 	sha1_init(&ctx);
-	sha1_update(&ctx, (uint8_t *)*string, size);
+	sha1_update(&ctx, (uint8_t *)tmp, strlen(tmp));
 	sha1_final(&ctx, (uint8_t *)sha1);
 	
 	char sha_name[64];
 	snprintf(sha_name, sizeof(sha_name), "%08x%08x%08x%08x%08x", sha1[0], sha1[1], sha1[2], sha1[3], sha1[4]);
 	
-	char gxp_path[128], glsl_path[128];;
+	char gxp_path[128], glsl_path[128];
 	snprintf(gxp_path, sizeof(gxp_path), "%s/%s.gxp", "ux0:data/fahrenheit/gxp", sha_name);
 
 	FILE *file = fopen(gxp_path, "rb");
@@ -556,10 +567,56 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 		snprintf(glsl_path, sizeof(glsl_path), "%s/%s.glsl", "ux0:data/fahrenheit/glsl", sha_name);
 		file = fopen(glsl_path, "w");
 		if (file) {
-			fwrite(*string, 1, size, file);
+			fwrite(tmp, 1, strlen(tmp), file);
 			fclose(file);
 		}
+		
+		printf("Auto translation attempt...\n");
+		char *tmp2 = vglMalloc(strlen(tmp));
+		tmp += 13;
+		char *s = strstr(tmp, "#if defined GL_ES");
+		if (strstr(tmp, "u_modelViewProjectionMatrix")) { // Vertex shader
+			sceClibMemcpy(tmp2, tmp, s - tmp);
+			char *p = tmp2 + (s - tmp);
+			sprintf(glsl_path, "ux0:data/fahrenheit/vert.cg");
+			file = fopen(glsl_path, "r");
+			fseek(file, 0, SEEK_END);
+			size_t shaderSize = ftell(file);
+			fseek(file, 0, SEEK_SET);
+			fread(p, 1, shaderSize, file);
+			fclose(file);
+			p[shaderSize] = 0;
+			glShaderSource(shader, 1, &tmp2, NULL);
+			glCompileShader(shader);
+			vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
+			file = fopen(gxp_path, "w+");
+			fwrite(tmp2, 1, shaderSize, file);
+			fclose(file);
+			vglFree(tmp2);
+		} else { // Fragment Shader
+			s = strstr(tmp, "#define ASL_FASTEST 4353");
+			sceClibMemcpy(tmp2, tmp, s - tmp);
+			char *p = tmp2 + (s - tmp);
+			sprintf(glsl_path, "ux0:data/fahrenheit/frag.cg");
+			file = fopen(glsl_path, "r");
+			fseek(file, 0, SEEK_END);
+			size_t shaderSize = ftell(file);
+			fseek(file, 0, SEEK_SET);
+			fread(p, 1, shaderSize, file);
+			fclose(file);
+			p[shaderSize] = 0;
+			glShaderSource(shader, 1, &tmp2, NULL);
+			glCompileShader(shader);
+			vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
+			file = fopen(gxp_path, "w+");
+			fwrite(tmp2, 1, shaderSize, file);
+			fclose(file);
+			vglFree(tmp2);
+		}
+		vglFree(tmp - 13);
 	} else {
+		vglFree(tmp);
+
 		size_t shaderSize;
 		void *shaderBuf;
 
@@ -582,6 +639,7 @@ static so_default_dynlib gl_hook[] = {
 	{"glCompileShader", (uintptr_t)&ret0},
 	{"glPixelStorei", (uintptr_t)&ret0},
 	{"glBlendColor", (uintptr_t)&ret0},
+	{"glDeleteShader", (uintptr_t)&ret0},
 };
 static size_t gl_numhook = sizeof(gl_hook) / sizeof(*gl_hook);
 
@@ -603,7 +661,92 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
 	return strlen(buf);
 }
 
+#define SCE_ERRNO_MASK 0xFF
+
+#define DT_DIR 4
+#define DT_REG 8
+
+struct android_dirent {
+  char pad[18];
+  unsigned char d_type;
+  char d_name[256];
+};
+
+typedef struct {
+  SceUID uid;
+  struct android_dirent dir;
+} android_DIR;
+
+int closedir_fake(android_DIR *dirp) {
+  if (!dirp || dirp->uid < 0) {
+    errno = EBADF;
+    return -1;
+  }
+
+  int res = sceIoDclose(dirp->uid);
+  dirp->uid = -1;
+
+  free(dirp);
+
+  if (res < 0) {
+    errno = res & SCE_ERRNO_MASK;
+    return -1;
+  }
+
+  errno = 0;
+  return 0;
+}
+
+android_DIR *opendir_fake(const char *dirname) {
+  SceUID uid = sceIoDopen(dirname);
+
+  if (uid < 0) {
+    errno = uid & SCE_ERRNO_MASK;
+    return NULL;
+  }
+
+  android_DIR *dirp = calloc(1, sizeof(android_DIR));
+
+  if (!dirp) {
+    sceIoDclose(uid);
+    errno = ENOMEM;
+    return NULL;
+  }
+
+  dirp->uid = uid;
+
+  errno = 0;
+  return dirp;
+}
+
+struct android_dirent *readdir_fake(android_DIR *dirp) {
+  if (!dirp) {
+    errno = EBADF;
+    return NULL;
+  }
+
+  SceIoDirent sce_dir;
+  int res = sceIoDread(dirp->uid, &sce_dir);
+
+  if (res < 0) {
+    errno = res & SCE_ERRNO_MASK;
+    return NULL;
+  }
+
+  if (res == 0) {
+    errno = 0;
+    return NULL;
+  }
+
+  dirp->dir.d_type = SCE_S_ISDIR(sce_dir.d_stat.st_mode) ? DT_DIR : DT_REG;
+  strcpy(dirp->dir.d_name, sce_dir.d_name);
+  return &dirp->dir;
+}
+
 static so_default_dynlib default_dynlib[] = {
+  { "opendir", (uintptr_t)&opendir_fake },
+  { "readdir", (uintptr_t)&readdir_fake },
+  { "closedir", (uintptr_t)&closedir_fake },
   { "readlink", (uintptr_t)&readlink },
   { "g_SDL_BufferGeometry_w", (uintptr_t)&g_SDL_BufferGeometry_w },
   { "g_SDL_BufferGeometry_h", (uintptr_t)&g_SDL_BufferGeometry_h },
@@ -697,6 +840,7 @@ static so_default_dynlib default_dynlib[] = {
   { "floorf", (uintptr_t)&floorf },
   { "fmod", (uintptr_t)&fmod },
   { "fmodf", (uintptr_t)&fmodf },
+  { "fnmatch", (uintptr_t)&fnmatch },
   { "fopen", (uintptr_t)&fopen_hook },
   { "fprintf", (uintptr_t)&fprintf_hook },
   { "fputc", (uintptr_t)&fputc },
@@ -747,6 +891,7 @@ static so_default_dynlib default_dynlib[] = {
   { "localtime_r", (uintptr_t)&localtime_r },
   { "log", (uintptr_t)&log },
   { "log10", (uintptr_t)&log10 },
+  { "log10f", (uintptr_t)&log10f },
   { "longjmp", (uintptr_t)&longjmp },
   { "lrand48", (uintptr_t)&lrand48 },
   { "lrint", (uintptr_t)&lrint },
@@ -1267,10 +1412,11 @@ void abort_handler(KuKernelAbortContext *ctx) {
 }
 
 int main(int argc, char *argv[]) {
-  kuKernelRegisterAbortHandler(abort_handler, NULL);
+  //kuKernelRegisterAbortHandler(abort_handler, NULL);
   //SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
   //sceKernelStartThread(crasher_thread, 0, NULL);	
-	
+  sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
+  
   SceAppUtilInitParam init_param;
   SceAppUtilBootParam boot_param;
   memset(&init_param, 0, sizeof(SceAppUtilInitParam));

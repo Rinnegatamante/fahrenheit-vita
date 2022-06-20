@@ -23,6 +23,7 @@ add_executable(SoulCalibur
   loader/so_util.c
   loader/sha1.c
   loader/ctype_patch.c
+  loader/fnmatch.c
 )
 
 target_link_libraries(SoulCalibur
