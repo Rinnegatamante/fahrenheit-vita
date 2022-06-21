@@ -343,7 +343,10 @@ int pthread_cond_timedwait_relative_np_fake(pthread_cond_t **cnd, pthread_mutex_
 }
 
 int pthread_create_fake(pthread_t *thread, const void *unused, void *entry, void *arg) {
-	return pthread_create(thread, NULL, entry, arg);
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setstacksize(&attr, 0x40000);
+	return pthread_create(thread, &attr, entry, arg);
 }
 
 int pthread_once_fake(volatile int *once_control, void (*init_routine)(void)) {
@@ -379,7 +382,7 @@ int SetTexture(void *a1, unsigned int a2, int a3) {
 }
 
 void patch_game(void) {
-	hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
+	//hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
 }
 
 extern void *__aeabi_atexit;
@@ -408,8 +411,7 @@ int stat_hook(const char *pathname, void *statbuf) {
 	return res;
 }
 
-void *mmap(void *addr, size_t length, int prot, int flags, int fd,
-					 off_t offset) {
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
 	return vglMalloc(length);
 }
 
@@ -464,10 +466,6 @@ int mkdir_hook(const char *pathname, mode_t mode) {
 	return mkdir(pathname, mode);
 }
 
-extern void *_Znaj;
-extern void *_Znwj;
-extern void *_ZdlPv;
-extern void *_ZdaPv;
 extern void *__cxa_guard_acquire;
 extern void *__cxa_guard_release;
 
@@ -790,10 +788,6 @@ static so_default_dynlib default_dynlib[] = {
 	{ "_ctype_", (uintptr_t)&BIONIC_ctype_},
 	{ "_tolower_tab_", (uintptr_t)&BIONIC_tolower_tab_},
 	{ "_toupper_tab_", (uintptr_t)&BIONIC_toupper_tab_},
-	{ "_Znaj", (uintptr_t)&_Znaj },
-	{ "_Znwj", (uintptr_t)&_Znwj },
-	{ "_ZdaPv", (uintptr_t)&_ZdaPv },
-	{ "_ZdlPv", (uintptr_t)&_ZdlPv },
 	{ "abort", (uintptr_t)&abort_hook },
 	{ "access", (uintptr_t)&access_hook },
 	{ "acos", (uintptr_t)&acos },
@@ -1474,6 +1468,8 @@ int main(int argc, char *argv[]) {
 	so_flush_caches(&fahrenheit_mod);
 
 	so_initialize(&fahrenheit_mod);
+	
+	vglInitExtended(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
 
 	memset(fake_vm, 'A', sizeof(fake_vm));
 	*(uintptr_t *)(fake_vm + 0x00) = (uintptr_t)fake_vm; // just point to itself...
