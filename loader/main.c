@@ -410,8 +410,10 @@ int dynamic_cast_hook(int *a1, int a2, int a3, int a4)
   else
   {
 	printf("v9 is %x, a3 is %x, v6 is %x\n", v9, a3, v6);
-	printf("*(v9 + 24) is %x\n", *(_DWORD *)v9 + 24);
-    (*(void (__fastcall **)(int, int *, int, signed int, _DWORD))(*(_DWORD *)v9 + 24))(v9, &v17, v10, 1, 0);
+	if (v9) {
+		printf("*(v9 + 24) is %x\n", *(_DWORD *)v9 + 24);
+		(*(void (__fastcall **)(int, int *, int))(*(_DWORD *)v9 + 24))(v9, &v17, v10);
+	}
     if ( *(_DWORD *)&v21[20] == 1 )
     {
       if ( *(_DWORD *)&v21[8] == 1 )
@@ -477,8 +479,15 @@ static int __stack_chk_guard_fake = 0x42424242;
 static FILE __sF_fake[0x100][3];
 
 int stat_hook(const char *pathname, void *statbuf) {
+	printf("stat(%s)\n", pathname);
 	struct stat st;
-	int res = stat(pathname, &st);
+	int res;
+	if (!strstr(pathname, "ux0:")) {
+		char real_fname[256];
+		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
+		res = stat(real_fname, &st);
+	} else
+		res = stat(pathname, &st);
 	if (res == 0)
 		*(uint64_t *)(statbuf + 0x30) = st.st_size;
 	return res;
@@ -775,7 +784,14 @@ int closedir_fake(android_DIR *dirp) {
 }
 
 android_DIR *opendir_fake(const char *dirname) {
-	SceUID uid = sceIoDopen(dirname);
+	printf("opendir(%s)\n", dirname);
+	SceUID uid;
+	if (!strstr(dirname, "ux0:")) {
+		char real_fname[256];
+		sprintf(real_fname, "ux0:data/fahrenheit/%s", dirname);
+		uid = sceIoDopen(real_fname);
+	} else
+		uid = sceIoDopen(dirname);
 
 	if (uid < 0) {
 		errno = uid & SCE_ERRNO_MASK;
@@ -892,7 +908,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "ceilf", (uintptr_t)&ceilf },
 	{ "chdir", (uintptr_t)&chdir_hook },
 	{ "clearerr", (uintptr_t)&clearerr },
-	{ "clock_gettime", (uintptr_t)&clock_gettime_hook	},
+	{ "clock_gettime", (uintptr_t)&clock_gettime_hook },
 	{ "close", (uintptr_t)&close },
 	{ "cos", (uintptr_t)&cos },
 	{ "cosf", (uintptr_t)&cosf },
@@ -900,6 +916,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "crc32", (uintptr_t)&crc32 },
 	{ "deflate", (uintptr_t)&deflate },
 	{ "deflateEnd", (uintptr_t)&deflateEnd },
+	{ "deflateInit_", (uintptr_t)&deflateInit_ },
 	{ "deflateInit2_", (uintptr_t)&deflateInit2_ },
 	{ "deflateReset", (uintptr_t)&deflateReset },
 	{ "dlopen", (uintptr_t)&ret0 },
@@ -923,6 +940,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "fopen", (uintptr_t)&fopen_hook },
 	{ "fprintf", (uintptr_t)&fprintf },
 	{ "fputc", (uintptr_t)&fputc },
+	{ "fputwc", (uintptr_t)&fputwc },
 	{ "fputs", (uintptr_t)&fputs },
 	{ "fread", (uintptr_t)&fread },
 	{ "free", (uintptr_t)&vglFree },
