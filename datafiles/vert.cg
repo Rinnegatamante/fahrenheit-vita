@@ -128,7 +128,7 @@ float3 normal;
 float4 vertexPositionInEye;
 
 // Functions
-void calcLighting(float4 inputColor);
+float4 calcLighting(float4 inputColor, float4 clr);
 float calcFogFactor(float distanceToEye);
 void calcClipPlanes();
 float4 calcTexture0Coordinates(float4 pos, float3 normal, float4 texcoord);
@@ -282,12 +282,12 @@ void main(
 #endif
 
 #if LIGHTING_ENABLED == 1
-	calcLighting(color);
+	v_frontColor = calcLighting(color, v_frontColor);
 #elif LIGHTING_ENABLED == 0
 	v_frontColor = color;
 #else
 	if (u_lightingEnabled) {
-		calcLighting(color);
+		v_frontColor = calcLighting(color, v_frontColor);
 	} else {
 		v_frontColor = color;
 	}
@@ -396,8 +396,8 @@ float4 calcTexture0Coordinates(float4 pos, float3 normal, float4 a_texCoord0)
 #elif TEXTURE0_GEN_MODE_S == ASL_NORMAL_MAP_ARB
 	inTexCoord = float4(normal.x, normal.y, normal.z, 1.0);
 #elif TEXTURE0_GEN_MODE_S == ASL_REFLECTION_MAP_ARB
-	float3 reflect = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
-	inTexCoord = float44(reflect.x, reflect.y, reflect.z, 1.0);
+	float3 reflection = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
+	inTexCoord = float4(reflection.x, reflection.y, reflection.z, 1.0);
 #endif
 #endif
 
@@ -536,7 +536,7 @@ float4 calcTexture2Coordinates(float4 pos, float3 normal, float4 a_texCoord2)
 #elif TEXTURE2_GEN_MODE_S == ASL_NORMAL_MAP_ARB
 	inTexCoord = float4(normal.x, normal.y, normal.z, 1.0);
 #elif TEXTURE2_GEN_MODE_S == ASL_REFLECTION_MAP_ARB
-	vec3 reflect = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
+	float3 reflect = normalize(pos.xyz - dot(pos.xyz, normal) * 2.0 * normal);
 	inTexCoord = float4(reflect.x, reflect.y, reflect.z, 1.0);
 #endif
 #endif
@@ -630,3 +630,482 @@ float4 calcTexture3Coordinates(float4 pos, float3 normal, float4 a_texCoord3)
 }
 
 #endif
+
+#if !defined(LIGHT_MODEL_LOCAL_VIEWER_ENABLED)
+#define LIGHT_MODEL_LOCAL_VIEWER_ENABLED 0
+#endif
+#if !defined(LIGHT_MODEL_TWO_SIDE_ENABLED)
+#define LIGHT_MODEL_TWO_SIDE_ENABLED 0
+#endif
+#if !defined(LIGHT0_ENABLED)
+#define LIGHT0_ENABLED 0
+#endif
+#if !defined(LIGHT1_ENABLED)
+#define LIGHT1_ENABLED 0
+#endif
+#if !defined(LIGHT2_ENABLED)
+#define LIGHT2_ENABLED 0
+#endif
+
+
+#if !defined(LIGHT0_ENABLED)
+	#define LIGHT0_ENABLED -1
+#endif
+
+#if !defined(LIGHT1_ENABLED)
+	#define LIGHT1_ENABLED -1
+#endif
+
+#if !defined(LIGHT2_ENABLED)
+	#define LIGHT2_ENABLED -1
+#endif
+
+#if !defined(LIGHTING_HINT)
+	#define LIGHTING_HINT -1
+#endif
+
+#if !defined(LIGHT_MODEL_TWO_SIDE_ENABLED)
+	#define LIGHT_MODEL_TWO_SIDE_ENABLED -1
+#endif
+
+// Structs
+struct Light {
+	// all lights
+	float4 position; // if directional light, this must be normalized (so that we dont have to normalize it here)
+	float4 ambient;
+	float4 diffuse;
+	float4 specular;
+	
+	// point light & spotlight
+	float constantAttenuation;
+	float linearAttenuation;
+	float quadraticAttenuation;
+	
+	// spotlight
+	float3 spotDirection;
+	float spotExponent;
+	float spotCutoffAngleCos;
+};
+
+struct Material {
+	float4 ambient;
+	float4 diffuse;
+	float4 specular;
+	float4 emission;
+	float shininess;
+};
+
+// Uniforms
+uniform bool u_light0Enabled;
+uniform bool u_light1Enabled;
+uniform bool u_light2Enabled;
+uniform Light u_light0;
+uniform Light u_light1;
+uniform Light u_light2;
+uniform Material u_material;
+uniform bool u_lightModelLocalViewerEnabled;
+uniform bool u_lightModelTwoSideEnabled;
+uniform float4 u_globalAmbientColor;
+uniform int u_lightingAccuracy;
+
+// Functions
+void calcLightingVaryingsForFragmentShader();
+float4 calcPerVertexLighting(float4 inputColor);
+
+float4 calcLighting(float4 inputColor, float4 v_frontColor)
+{
+#if LIGHT_MODEL_TWO_SIDE_ENABLED == 1 || LIGHT_MODEL_TWO_SIDE_ENABLED == -1
+	#if LIGHT_MODEL_TWO_SIDE_ENABLED == -1
+	if (u_lightModelTwoSideEnabled) {
+	#endif
+		#if LIGHTING_HINT == ASL_FASTEST
+		v_frontColor = calcPerVertexLighting(inputColor);
+		normal = -normal;
+		v_backColor = calcPerVertexLighting(inputColor);
+		#elif LIGHTING_HINT == ASL_NICEST
+		calcLightingVaryingsForFragmentShader();
+		#elif LIGHTING_HINT == -1
+		if (u_lightingAccuracy == ASL_FASTEST) {
+			v_frontColor = calcPerVertexLighting(inputColor);
+			normal = -normal;
+			v_backColor = calcPerVertexLighting(inputColor);
+		} else {
+			calcLightingVaryingsForFragmentShader();
+		}
+		#endif
+	#if LIGHT_MODEL_TWO_SIDE_ENABLED == -1
+	} else {
+		#if LIGHTING_HINT == ASL_FASTEST
+		v_frontColor = calcPerVertexLighting(inputColor);
+		#elif LIGHTING_HINT == ASL_NICEST
+		calcLightingVaryingsForFragmentShader();
+		#elif LIGHTING_HINT == -1
+		if (u_lightingAccuracy == ASL_FASTEST) {
+			v_frontColor = calcPerVertexLighting(inputColor);
+		} else {
+			calcLightingVaryingsForFragmentShader();
+		}
+		#endif
+	}
+	#endif
+#else 
+	#if LIGHTING_HINT == ASL_FASTEST
+		v_frontColor = calcPerVertexLighting(inputColor);
+	#elif LIGHTING_HINT == ASL_NICEST
+		calcLightingVaryingsForFragmentShader();
+	#elif LIGHTING_HINT == -1
+		if (u_lightingAccuracy == ASL_FASTEST) {
+			v_frontColor = calcPerVertexLighting(inputColor);
+		} else {
+			calcLightingVaryingsForFragmentShader();
+		}
+	#endif
+#endif
+	return v_frontColor;
+}
+
+#define ASL_LINEAR 9729 // 0x2601
+#define ASL_EXP 2048 // 0x0800
+#define ASL_EXP2 2049 // 0x0801
+
+#if !defined(FOG_MODE)
+	#define FOG_MODE -1
+#endif
+
+// Uniforms
+uniform int u_fogMode;
+uniform float u_fogDensity;
+uniform float u_fogStart;
+uniform float u_fogEnd;
+
+// Functions
+float calcFogLinear(float distanceToEye);
+float calcFogExp(float distanceToEye);
+float calcFogExp2(float distanceToEye);
+
+
+float calcFogFactor(float distanceToEye)
+{
+	float fogFactor;
+#if FOG_MODE == ASL_LINEAR
+	fogFactor = calcFogLinear(distanceToEye);
+#elif FOG_MODE == ASL_EXP
+	fogFactor = calcFogExp(distanceToEye);
+#elif FOG_MODE == ASL_EXP2
+	fogFactor = calcFogExp2(distanceToEye);
+#elif FOG_MODE == -1
+	if (u_fogMode == ASL_LINEAR) {
+		fogFactor = calcFogLinear(distanceToEye);
+	} else if (u_fogMode == ASL_EXP) {
+		fogFactor = calcFogExp(distanceToEye);
+	} else {
+		fogFactor = calcFogExp2(distanceToEye);
+	}
+#endif
+	
+	return fogFactor;
+}
+
+float calcFogLinear(float distanceToEye)
+{
+	float f = (u_fogEnd + distanceToEye) / (u_fogEnd - u_fogStart);
+	return clamp(f, c_zerof, c_onef);
+}
+
+float calcFogExp(float distanceToEye)
+{
+	float f = exp(-(distanceToEye * u_fogDensity));
+	return clamp(f, c_zerof, c_onef);
+}
+
+float calcFogExp2(float distanceToEye)
+{
+	float f = distanceToEye * u_fogDensity;
+	f = exp(-(f*f));
+	return clamp(f, c_zerof, c_onef);
+}
+
+// Functions
+float4 calcDirectionalLight(Light light);
+float4 calcDirectionalLightWithLocalViewer(Light light);
+float4 calcPointLight(Light light);
+float4 calcPointLightWithLocalViewer(Light light);
+float4 calcSpotLight(Light light);
+float4 calcSpotLightWithLocalViewer(Light light);
+float calcBasicAttenuationFactor(Light light, float3 lightVector);
+float calcSpotFactor(Light light, float3 lightVector);
+float4 calcLight(Light light);
+
+
+float4 calcPerVertexLighting(float4 inputColor)
+{
+	// TODO: Test if faster with vec3 because alpha is just u_material.diffuse.a
+	float4 color;
+	float4 ambient;
+	if (u_colorMaterial == ASL_AMBIENT)
+	{
+		ambient = inputColor;
+	}
+	else
+	{
+		ambient = u_material.ambient;
+	}
+	color = ambient * u_globalAmbientColor;
+	color += u_material.emission;
+	
+	#if LIGHT0_ENABLED == 1
+	color += calcLight(u_light0);
+	#elif LIGHT0_ENABLED == -1
+	if (u_light0Enabled) {
+		color += calcLight(u_light0);
+	}
+	#endif
+	
+	#if LIGHT1_ENABLED == 1
+	color += calcLight(u_light1);
+	#elif LIGHT1_ENABLED == -1
+	if (u_light1Enabled) {
+		color += calcLight(u_light1);
+	}
+	#endif
+	
+	#if LIGHT2_ENABLED == 1
+	color += calcLight(u_light2);
+	#elif LIGHT2_ENABLED == -1
+	if (u_light2Enabled) {
+		color += calcLight(u_light2);
+	}
+	#endif	
+	
+	color.a = u_material.diffuse.a;
+	
+	return clamp(color, c_zerof, c_onef);
+}
+
+float4 calcLight(Light light) 
+{
+	float4 color;
+#if LIGHT_MODEL_LOCAL_VIEWER_ENABLED == 1
+	#if NON_DIRECTIONAL_LIGHT_ENABLED == 1 || NON_DIRECTIONAL_LIGHT_ENABLED == -1
+	if (light.position.w != c_zerof) {
+		if (light.spotCutoffAngleCos > -c_onef) {
+			color = calcSpotLightWithLocalViewer(light);
+		} else {
+			color = calcPointLightWithLocalViewer(light);
+		}
+	} else {
+		color = calcDirectionalLightWithLocalViewer(light);
+	}
+	#else
+	color = calcDirectionalLightWithLocalViewer(light);
+	#endif
+#elif LIGHT_MODEL_LOCAL_VIEWER_ENABLED == 0
+	#if NON_DIRECTIONAL_LIGHT_ENABLED == 1 || NON_DIRECTIONAL_LIGHT_ENABLED == -1
+	if (light.position.w != c_zerof) {
+		if (light.spotCutoffAngleCos > -c_onef) {
+			color = calcSpotLight(light);
+		} else {
+			color = calcPointLight(light);
+		}
+	} else {
+		color = calcDirectionalLight(light);
+	}
+	#else
+	color = calcDirectionalLight(light);
+	#endif
+#else 
+	if (u_lightModelLocalViewerEnabled) {
+		#if NON_DIRECTIONAL_LIGHT_ENABLED == 1 || NON_DIRECTIONAL_LIGHT_ENABLED == -1
+		if (light.position.w != c_zerof) {
+			if (light.spotCutoffAngleCos > -c_onef) {
+				color = calcSpotLightWithLocalViewer(light);
+			} else {
+				color = calcPointLightWithLocalViewer(light);
+			}
+		} else {
+			color = calcDirectionalLightWithLocalViewer(light);
+		}
+		#else
+		color = calcDirectionalLightWithLocalViewer(light);
+		#endif
+	} else {
+		#if NON_DIRECTIONAL_LIGHT_ENABLED == 1 || NON_DIRECTIONAL_LIGHT_ENABLED == -1
+		if (light.position.w != c_zerof) {
+			if (light.spotCutoffAngleCos > -c_onef) {
+				color = calcSpotLight(light);
+			} else {
+				color = calcPointLight(light);
+			}
+		} else {
+			color = calcDirectionalLight(light);
+		}
+		#else
+		color = calcDirectionalLight(light);
+		#endif
+	}
+#endif
+	
+	return color;
+}
+
+float calcBasicAttenuationFactor(Light light, float3 lightVector) 
+{
+	float3 attenuationDistance;
+	attenuationDistance.x = c_onef;
+	attenuationDistance.z = dot(lightVector, lightVector);
+	attenuationDistance.y = sqrt(attenuationDistance.z);
+	return c_onef / dot(attenuationDistance, float3(light.constantAttenuation, light.linearAttenuation, light.quadraticAttenuation));
+}
+
+float calcSpotFactor(Light light, float3 lightVector)
+{
+	float spotFactor = dot(normalize(-lightVector), normalize(light.spotDirection));
+	if (spotFactor >= light.spotCutoffAngleCos) {
+		return pow(spotFactor, light.spotExponent);
+	} else {
+		return c_zerof;
+	}
+}
+
+float4 calcDirectionalLight(Light light)
+{
+	float3 lightVector = light.position.xyz;
+	float3 eyeVector = float3(c_zerof, c_zerof, c_onef);
+	
+	float3 halfVector = normalize(eyeVector + lightVector); // TODO: This could be precomputed
+	float cosL = max(c_zerof, dot(normal, lightVector));
+	float cosH = dot(normal, halfVector);
+	
+	float4 color = (light.ambient * u_material.ambient);
+	color += (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	return color;
+}
+
+float4 calcDirectionalLightWithLocalViewer(Light light)
+{
+	float3 lightVector = light.position.xyz;
+	float3 eyeVector = normalize(-vertexPositionInEye.xyz);
+	
+	float3 halfVector = normalize(eyeVector + lightVector);
+	float cosL = max(c_zerof, dot(normal, lightVector));
+	float cosH = dot(normal, halfVector);
+	
+	float4 color = (light.ambient * u_material.ambient);
+	color += (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	return color;
+}
+
+float4 calcPointLight(Light light)
+{
+	float3 lightVector = light.position.xyz - vertexPositionInEye.xyz;
+	
+	// TODO: if clause here because of heavy computation?
+	float attenuationFactor = calcBasicAttenuationFactor(light, lightVector);
+	
+	lightVector = normalize(lightVector);
+	
+	float3 eyeVector = float3(c_zerof, c_zerof, c_onef);
+	
+	float3 halfVector = normalize(eyeVector + lightVector);
+	float cosL = max(c_zerof, dot(normal, lightVector));
+	float cosH = dot(normal, halfVector);
+	
+	float4 color = (light.ambient * u_material.ambient);
+	color += (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	color *= attenuationFactor;
+	
+	return color;
+}
+
+
+float4 calcPointLightWithLocalViewer(Light light)
+{
+	float3 lightVector = light.position.xyz - vertexPositionInEye.xyz;
+	
+	// TODO: if clause here because of heavy computation?
+	float attenuationFactor = calcBasicAttenuationFactor(light, lightVector);
+	
+	lightVector = normalize(lightVector);
+	
+	float3 eyeVector = normalize(-vertexPositionInEye.xyz);
+	
+	float3 halfVector = normalize(eyeVector + lightVector);
+	float cosL = max(c_zerof, dot(normal, lightVector));
+	float cosH = dot(normal, halfVector);
+	
+	float4 color = (light.ambient * u_material.ambient);
+	color += (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	color *= attenuationFactor;
+	
+	return color;
+}
+
+float4 calcSpotLight(Light light)
+{
+	float3 lightVector = light.position.xyz - vertexPositionInEye.xyz;
+	
+	// TODO: if clause here because of heavy computation?
+	float attenuationFactor = calcBasicAttenuationFactor(light, lightVector);
+	attenuationFactor *= calcSpotFactor(light, lightVector);
+	
+	lightVector = normalize(lightVector);
+	
+	float3 eyeVector = float3(c_zerof, c_zerof, c_onef);
+	
+	float3 halfVector = normalize(eyeVector + lightVector);
+	float cosL = max(c_zerof, dot(normal, lightVector));
+	float cosH = dot(normal, halfVector);
+	
+	float4 color = (light.ambient * u_material.ambient);
+	color += (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	color *= attenuationFactor;
+	
+	return color;
+}
+
+float4 calcSpotLightWithLocalViewer(Light light)
+{
+	float3 lightVector = light.position.xyz - vertexPositionInEye.xyz;
+	
+	// TODO: if clause here because of heavy computation?
+	float attenuationFactor = calcBasicAttenuationFactor(light, lightVector);
+	attenuationFactor *= calcSpotFactor(light, lightVector);
+	
+	lightVector = normalize(lightVector);
+	
+	float3 eyeVector = normalize(-vertexPositionInEye.xyz);
+	
+	float3 halfVector = normalize(eyeVector + lightVector);
+	float cosL = max(c_zerof, dot(normal, lightVector));
+	float cosH = dot(normal, halfVector);
+	
+	float4 color = (light.ambient * u_material.ambient);
+	color += (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	color *= attenuationFactor;
+	
+	return color;
+}

@@ -75,7 +75,7 @@ static float c_onef = 1.0;
 
 // Funtions
 float calcFogFactor(float distanceToEye);
-float4 calcLighting();
+float4 calcLighting(float4 clr, float4 front_clr);
 void clipPlanesTest();
 void alphaTest(float alpha);
 void calcTextureColorContribution(inout float4 color);
@@ -85,10 +85,10 @@ float4 fetchTexture0Color(float4 texcoord);
 float4 fetchTexture1Color(float4 texcoord);
 float4 fetchTexture2Color(float4 texcoord);
 float4 fetchTexture3Color(float4 texcoord);
-float4 calcTexture0Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
-float4 calcTexture1Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
-float4 calcTexture2Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
-float4 calcTexture3Environment(float4 color, float4 texcoord, float4 clr, float4 clr2, float4 clr3, float4 clr4, float4 clr5);
+float4 calcTexture0Environment(float4 color, float4 v_texCoord0, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor);
+float4 calcTexture1Environment(float4 color, float4 v_texCoord1, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor);
+float4 calcTexture2Environment(float4 color, float4 v_texCoord2, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor);
+float4 calcTexture3Environment(float4 color, float4 v_texCoord3, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor);
 
 float4 main(
 #if FOG_ENABLED == 1 || FOG_ENABLED == -1
@@ -115,12 +115,12 @@ float4 main(
 	
 	float4 color;
 #if LIGHTING_ENABLED == 1
-	color = calcLighting(color);
+	color = calcLighting(color, v_frontColor);
 #elif LIGHTING_ENABLED == 0
 	color = v_frontColor;
 #else
 	if (u_lightingEnabled) {
-		color = calcLighting();
+		color = calcLighting(color, v_frontColor);
 	} else {
 		color = v_frontColor;
 	}
@@ -774,7 +774,7 @@ float4 fetchTexture1Color(float4 v_texCoord1)
 	#endif
 }
 
-float4 calcTexture0Environment(float4 color, float4 v_texCoord1, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor)
+float4 calcTexture1Environment(float4 color, float4 v_texCoord1, float4 texture0Color, float4 texture1Color, float4 texture2Color, float4 texture3Color, float4 v_frontColor)
 {
 #if TEXTURE1_ENV_MODE == ASL_MODULATE
 	#if TEXTURE1_FORMAT == ASL_ALPHA
@@ -1932,3 +1932,296 @@ void alphaTest(float alpha)
 	}
 #endif
 }
+
+#if !defined(LIGHT_MODEL_LOCAL_VIEWER_ENABLED)
+#define LIGHT_MODEL_LOCAL_VIEWER_ENABLED 0
+#endif
+#if !defined(LIGHT_MODEL_TWO_SIDE_ENABLED)
+#define LIGHT_MODEL_TWO_SIDE_ENABLED 0
+#endif
+
+
+#if !defined(LIGHTING_HINT)
+	#define LIGHTING_HINT -1
+#endif
+
+#if !defined(LIGHT_MODEL_TWO_SIDE_ENABLED)
+	#define LIGHT_MODEL_TWO_SIDE_ENABLED -1
+#endif
+
+// Uniforms
+uniform int u_lightingHint;
+uniform bool u_lightModelTwoSideEnabled;
+uniform int u_lightingAccuracy;
+
+float4 calcLighting(float4 color, float4 v_frontColor)
+{
+#if LIGHT_MODEL_TWO_SIDE_ENABLED == 1 ||  LIGHT_MODEL_TWO_SIDE_ENABLED == -1
+	#if LIGHT_MODEL_TWO_SIDE_ENABLED == -1
+	if (u_lightModelTwoSideEnabled) {
+	#endif
+	if (gl_FrontFacing) {
+		#if LIGHTING_HINT == ASL_FASTEST
+		color = v_frontColor;
+		#elif LIGHTING_HINT == ASL_NICEST
+		color = calcPerFragmentLighting();
+		#elif LIGHTING_HINT == -1
+		if (u_lightingAccuracy == ASL_FASTEST) {
+			color = v_frontColor;
+		} else if (u_lightingAccuracy == ASL_NICEST) {
+			color = calcPerFragmentLighting();
+		}
+		#endif
+	} else {
+		//#if LIGHTING_HINT == ASL_FASTEST
+		color = v_backColor;
+		/*#elif LIGHTING_HINT == ASL_NICEST
+		color = calcPerFragmentLighting();
+		#elif LIGHTING_HINT == -1
+		if (u_lightingAccuracy == ASL_FASTEST) {
+			color = v_backColor;
+		} else if (u_lightingAccuracy == ASL_NICEST) {
+			color = calcPerFragmentLighting();
+		}
+		#endif*/
+	}
+	#if LIGHT_MODEL_TWO_SIDE_ENABLED == -1
+	} else {
+		//#if LIGHTING_HINT == ASL_FASTEST
+		color = v_frontColor;
+		/*#elif LIGHTING_HINT == ASL_NICEST
+		color = calcPerFragmentLighting();
+		#elif LIGHTING_HINT == -1
+		if (u_lightingAccuracy == ASL_FASTEST) {
+			color = v_frontColor;
+		} else if (u_lightingAccuracy == ASL_NICEST) {
+			color = calcPerFragmentLighting();
+		}
+		#endif*/
+	}
+	#endif
+#elif LIGHT_MODEL_TWO_SIDE_ENABLED == 0
+	//#if LIGHTING_HINT == ASL_FASTEST
+	color = v_frontColor;
+	/*#elif LIGHTING_HINT == ASL_NICEST
+	color = calcPerFragmentLighting();
+	#elif LIGHTING_HINT == -1
+	if (u_lightingAccuracy == ASL_FASTEST) {
+		color = v_frontColor;
+		} else if (u_lightingAccuracy == ASL_NICEST) {
+	color = calcPerFragmentLighting();
+	}
+	#endif*/
+#endif
+	return color;
+}
+
+
+#if !defined(LIGHT0_ENABLED)
+#define LIGHT0_ENABLED 0
+#endif
+#if !defined(LIGHT1_ENABLED)
+#define LIGHT1_ENABLED 0
+#endif
+#if !defined(LIGHT2_ENABLED)
+#define LIGHT2_ENABLED 0
+#endif
+/*
+#if LIGHTING_HINT == ASL_NICEST
+#if !defined(LIGHT0_ENABLED)
+	#define LIGHT0_ENABLED -1
+#endif
+
+#if !defined(LIGHT1_ENABLED)
+	#define LIGHT1_ENABLED -1
+#endif
+
+#if !defined(LIGHT2_ENABLED)
+	#define LIGHT2_ENABLED -1
+#endif
+
+// Structs
+struct Light {
+	// all lights
+	float4 position; // if directional light, this must be normalized (so that we dont have to normalize it here)
+	float4 ambient;
+	float4 diffuse;
+	float4 specular;
+	
+	// point light & spotlight
+	float constantAttenuation;
+	float linearAttenuation;
+	float quadraticAttenuation;
+	
+	// spotlight
+	float3 spotDirection;
+	float spotExponent;
+	float spotCutoffAngleCos;
+};
+
+struct Material {
+	float4 ambient;
+	float4 diffuse;
+	float4 specular;
+	float4 emission;
+	float shininess;
+};
+
+// Uniforms
+uniform bool u_light0Enabled;
+uniform bool u_light1Enabled;
+uniform bool u_light2Enabled;
+uniform Light u_light0;
+uniform Light u_light1;
+uniform Light u_light2;
+uniform Material u_material;
+
+// Varyings
+varying float3 v_normal;
+varying float4 v_ambientAndEmission;
+varying float3 v_light0Vector;
+varying float3 v_light0HalfVector;
+varying float3 v_light1Vector;
+varying float3 v_light1HalfVector;
+varying float3 v_light2Vector;
+varying float3 v_light2HalfVector;
+
+// Functions
+float4 calcDirectionalLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector);
+float4 calcPointLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector);
+float4 calcSpotLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector);
+float4 calcLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector);
+
+
+float4 calcPerFragmentLighting()
+{
+	float4 color = v_ambientAndEmission;
+#if LIGHT_MODEL_TWO_SIDE_ENABLED == 1
+	float3 normal = normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0);
+#elif LIGHT_MODEL_TWO_SIDE_ENABLED == 0
+	float3 normal = normalize(v_normal);
+#else
+	float3 normal;
+	if (u_lightModelTwoSideEnabled) {
+		normal = normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0);
+	} else {
+		normal = normalize(v_normal);
+	}
+#endif
+	
+	
+#if LIGHT0_ENABLED == 1
+	color += calcLight(u_light0, u_material, normal, v_light0Vector, v_light0HalfVector);
+#elif LIGHT0_ENABLED == -1
+	if (u_light0Enabled) {
+		color += calcLight(u_light0, u_material, normal, v_light0Vector, v_light0HalfVector);
+	}
+#endif
+	
+#if LIGHT1_ENABLED == 1
+	color += calcLight(u_light1, u_material, normal, v_light1Vector, v_light1HalfVector);
+#elif LIGHT1_ENABLED == -1
+	if (u_light1Enabled) {
+		color += calcLight(u_light1, u_material, normal, v_light1Vector, v_light1HalfVector);
+	}
+#endif
+	
+#if LIGHT2_ENABLED == 1
+	color += calcLight(u_light2, u_material, normal, v_light2Vector, v_light2HalfVector);
+#elif LIGHT2_ENABLED == -1
+	if (u_light2Enabled) {
+		color += calcLight(u_light2, u_material, normal, v_light2Vector, v_light2HalfVector);
+	}
+#endif
+	
+	color.a = u_material.diffuse.a;
+	
+	return clamp(color, c_zerof, c_onef);
+}
+
+float4 calcLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector) 
+{
+	float4 color;
+	if (light.position.w != c_zerof) {
+		if (light.spotCutoffAngleCos > -c_onef) {
+			color = calcSpotLight(light, material, normal, lightVector, halfVector);
+		} else {
+			color = calcPointLight(light, material, normal, lightVector, halfVector);
+		}
+	} else {
+		color = calcDirectionalLight(light, material, normal, lightVector, halfVector);
+	}
+	
+	return color;
+}
+
+float calcBasicAttenuationFactor(Light light, float3 lightVector) 
+{
+	float3 attenuationDistance;
+	attenuationDistance.x = c_onef;
+	attenuationDistance.z = dot(lightVector, lightVector);
+	attenuationDistance.y = sqrt(attenuationDistance.z);
+	return c_onef / dot(attenuationDistance, float3(light.constantAttenuation, light.linearAttenuation, light.quadraticAttenuation));
+}
+
+float calcSpotFactor(Light light, float3 lightVector)
+{
+	float spotFactor = dot(normalize(-lightVector), normalize(light.spotDirection));
+	if (spotFactor >= light.spotCutoffAngleCos) {
+		return pow(spotFactor, light.spotExponent);
+	} else {
+		return c_zerof;
+	}
+}
+
+float4 calcDirectionalLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector)
+{
+	float cosL = max(c_zerof, dot(normal, normalize(lightVector)));
+	float cosH = dot(normal, normalize(halfVector));
+	
+	float4 color = (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	return color;
+}
+
+float4 calcPointLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector)
+{
+	// if clause here because of heavy computation?
+	float attenuationFactor = calcBasicAttenuationFactor(light, lightVector);
+	
+	float cosL = max(c_zerof, dot(normal, normalize(lightVector)));
+	float cosH = dot(normal, normalize(halfVector));
+	
+	float4 color = (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	color *= attenuationFactor;
+	
+	return color;
+}
+
+float4 calcSpotLight(Light light, Material material, float3 normal, float3 lightVector, float3 halfVector)
+{
+	// if clause here because of heavy computation?
+	float attenuationFactor = calcBasicAttenuationFactor(light, lightVector);
+	attenuationFactor *= calcSpotFactor(light, lightVector);
+	
+	float cosL = max(c_zerof, dot(normal, normalize(lightVector)));
+	float cosH = dot(normal, normalize(halfVector));
+
+	float4 color = (light.diffuse * u_material.diffuse) * cosL;
+	if (cosH > c_zerof) {
+		color += (u_material.specular * light.specular) * pow(cosH, u_material.shininess);
+	}
+	
+	color *= attenuationFactor;
+	
+	return color;
+}
+
+#endif // LIGHTING_HINT == ASL_NICEST*/

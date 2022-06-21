@@ -110,26 +110,6 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
 	return 0;
 }
 
-int fprintf_hook(FILE *fp, char *fmt, ...) {
-	va_list list;
-	static char string[0x8000];
-
-	va_start(list, fmt);
-	vsprintf(string, fmt, list);
-	va_end(list);
-
-	printf("[FPRINTF] %s\n", string);
-	return fprintf(fp, string);
-}
-
-int fwrite_hook(const void *ptr, size_t size, size_t nmemb, FILE *s) {
-	static char string[0x8000];
-	sceClibMemcpy(string, ptr, size * nmemb);
-	string[size * nmemb] = 0;
-	printf("[FWRITE] %s\n", string);
-	return fwrite(ptr, size, nmemb, s);
-}
-
 int __android_log_write(int prio, const char *tag, const char *fmt, ...) {
 	va_list list;
 	static char string[0x8000];
@@ -331,14 +311,14 @@ int pthread_cond_timedwait_relative_np_fake(pthread_cond_t **cnd, pthread_mutex_
 			return -1;
 	}
 
-		if (ts != NULL) {
-			struct timespec ct;
-			clock_gettime_hook(0, &ct);
+	if (ts != NULL) {
+		struct timespec ct;
+		clock_gettime_hook(0, &ct);
 		ts->tv_sec += ct.tv_sec;
 		ts->tv_nsec += ct.tv_nsec;
-		}
-
-	sceKernelDelayThread(1000);
+	}
+	
+	pthread_cond_timedwait(*cnd, *mtx, ts); // FIXME
 	return 0;
 }
 
@@ -368,21 +348,114 @@ int GetEnv(void *vm, void **env, int r2) {
 	return 0;
 }
 
-void throw_bad_alloc() {
-	//printf("throw called\n");
-	uint8_t *a = NULL;
-	a[0] = 1;
-}
-
-so_hook hooks[1];
+so_hook hooks[2];
 
 int SetTexture(void *a1, unsigned int a2, int a3) {
-	//printf("SetTexture(%x, %x, %x, %x)\n", a1, a2, a3, a3 ? *(int *)a3 : 0xDEADBEEF);
+	int *astar = (int *)a3;
+	//printf("SetTexture(a3 %x, v6 %x, v9 %x, *(v9 + 24) %x)\n", a3, *astar, *(int *)(*astar - 4), *((int *)(*(int *)(*astar - 4)) + 24));
 	return SO_CONTINUE(int, hooks[0], a1, a2, 0);
 }
 
+#define _DWORD int
+
+int dynamic_cast_hook(int *a1, int a2, int a3, int a4)
+{
+  int *v4; // r6
+  int v5; // r5
+  int v6; // r0
+  int v7; // r8
+  int v8; // r9
+  int v9; // r4
+  int v10; // r6
+  int v11; // zf
+  int v12; // r1
+  int v13; // r3
+  int v14; // r2
+  int v15; // r1
+  int v17; // [sp+8h] [bp-44h]
+  int *v18; // [sp+Ch] [bp-40h]
+  int v19; // [sp+10h] [bp-3Ch]
+  int v20; // [sp+14h] [bp-38h]
+  uint8_t v21[39]; // [sp+18h] [bp-34h]
+
+  v4 = a1;
+  v5 = a3;
+  v6 = *a1;
+  v7 = 0;
+  v8 = *(_DWORD *)(v6 - 8);
+  v9 = *(_DWORD *)(v6 - 4);
+  v17 = a3;
+  v18 = v4;
+  v19 = a2;
+  v20 = a4;
+  sceClibMemset((int)v21, 39, 0);
+  v10 = (int)v4 + v8;
+  if ( v9 == v5 )
+  {
+    *(_DWORD *)&v21[32] = 1;
+    (*(void (__fastcall **)(int, int *, int, int, signed int, _DWORD, int, int *, int, int))(*(_DWORD *)v5 + 20))(
+      v5,
+      &v17,
+      v10,
+      v10,
+      1,
+      0,
+      v17,
+      v18,
+      v19,
+      v20);
+    if ( *(_DWORD *)&v21[8] == 1 )
+      v7 = v10;
+  }
+  else
+  {
+	printf("v9 is %x, a3 is %x, v6 is %x\n", v9, a3, v6);
+	printf("*(v9 + 24) is %x\n", *(_DWORD *)v9 + 24);
+    (*(void (__fastcall **)(int, int *, int, signed int, _DWORD))(*(_DWORD *)v9 + 24))(v9, &v17, v10, 1, 0);
+    if ( *(_DWORD *)&v21[20] == 1 )
+    {
+      if ( *(_DWORD *)&v21[8] == 1 )
+        goto LABEL_25;
+      v7 = 0;
+      if ( !*(_DWORD *)&v21[24] )
+      {
+        v11 = *(_DWORD *)&v21[12] == 1;
+        if ( *(_DWORD *)&v21[12] == 1 )
+          v11 = *(_DWORD *)&v21[16] == 1;
+        if ( v11 )
+LABEL_25:
+          v7 = *(_DWORD *)v21;
+      }
+    }
+    else if ( !*(_DWORD *)&v21[20] )
+    {
+      v12 = *(_DWORD *)&v21[12];
+      v13 = *(_DWORD *)&v21[24];
+      v14 = *(_DWORD *)&v21[16];
+      if ( *(_DWORD *)&v21[12] != 1 )
+        v12 = 0;
+      if ( *(_DWORD *)&v21[24] != 1 )
+        v13 = 0;
+      v15 = v12 & v13;
+      if ( *(_DWORD *)&v21[16] != 1 )
+        v14 = 0;
+      v7 = v15 & v14;
+      if ( v15 & v14 )
+        v7 = *(_DWORD *)&v21[4];
+    }
+  }
+  return v7;
+}
+
+/*int dynamic_cast_hook(int a1, int a2, int a3, int a4) {
+	printf("dynamic cast called!!!\n");
+	int *astar = (int *)a1;
+	printf("dynamic_cast(a1 %x, v6 %x, v9 %x, *(v9 + 24) %x)\n", a1, *astar, *(int *)(*astar - 4), *((int *)(*(int *)(*astar - 4)) + 24));
+	return SO_CONTINUE(int, hooks[1], a1, a2, a3, a4);
+}*/
+
 void patch_game(void) {
-	//hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
+	hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
 }
 
 extern void *__aeabi_atexit;
@@ -539,6 +612,8 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 	SHA1_CTX ctx;
 	
 	char *tmp = vglMalloc(1 * 1024 * 1024);
+	if (!tmp)
+		printf("OUT OF MEM!!!!\n");
 	char *p = tmp;
 	uint32_t tmp_idx = 0;
 	for (int i = 0; i < count; i++) {
@@ -564,54 +639,58 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 	if (!file) {
 		snprintf(glsl_path, sizeof(glsl_path), "%s/%s.glsl", "ux0:data/fahrenheit/glsl", sha_name);
 		file = fopen(glsl_path, "w");
-		if (file) {
-			fwrite(tmp, 1, strlen(tmp), file);
-			fclose(file);
-		}
+		fwrite(tmp, 1, strlen(tmp), file);
+		fclose(file);
 		
 		printf("Auto translation attempt...\n");
-		char *tmp2 = vglMalloc(strlen(tmp));
+		char *tmp2 = vglMalloc(1 * 1024 * 1024);
+		if (!tmp2)
+			printf("OUT OF MEM (2)!!!!\n");
 		tmp += 13;
 		char *s = strstr(tmp, "#if defined GL_ES");
+		if (!s) printf("wtf\n");
+		size_t shaderSize;
 		if (strstr(tmp, "u_modelViewProjectionMatrix")) { // Vertex shader
+			printf("Vertex shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/vert.cg");
 			file = fopen(glsl_path, "r");
 			fseek(file, 0, SEEK_END);
-			size_t shaderSize = ftell(file);
+			shaderSize = ftell(file);
 			fseek(file, 0, SEEK_SET);
 			fread(p, 1, shaderSize, file);
 			fclose(file);
 			p[shaderSize] = 0;
-			glShaderSource(shader, 1, &tmp2, NULL);
-			glCompileShader(shader);
-			vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
-			file = fopen(gxp_path, "w+");
-			fwrite(tmp2, 1, shaderSize, file);
-			fclose(file);
-			vglFree(tmp2);
 		} else { // Fragment Shader
-			s = strstr(tmp, "#define ASL_FASTEST 4353");
+			printf("Fragment shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/frag.cg");
 			file = fopen(glsl_path, "r");
 			fseek(file, 0, SEEK_END);
-			size_t shaderSize = ftell(file);
+			shaderSize = ftell(file);
 			fseek(file, 0, SEEK_SET);
 			fread(p, 1, shaderSize, file);
 			fclose(file);
 			p[shaderSize] = 0;
-			glShaderSource(shader, 1, &tmp2, NULL);
-			glCompileShader(shader);
-			vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
-			file = fopen(gxp_path, "w+");
-			fwrite(tmp2, 1, shaderSize, file);
-			fclose(file);
-			vglFree(tmp2);
 		}
+		/*
+		sprintf(glsl_path, "ux0:data/fahrenheit/glsl/%s.cg", sha_name);
+		file = fopen(glsl_path, "w+");
+		fwrite(tmp2, 1, strlen(tmp2), file);
+		fclose(file);
+		*/
+		printf("Compiling resulting shader\n");
+		glShaderSource(shader, 1, &tmp2, NULL);
+		glCompileShader(shader);
+		vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
+		file = fopen(gxp_path, "w+");
+		fwrite(tmp2, 1, shaderSize, file);
+		fclose(file);
+		vglFree(tmp2);
 		vglFree(tmp - 13);
+		printf("Auto translation completed!\n");
 	} else {
 		vglFree(tmp);
 
@@ -791,14 +870,18 @@ static so_default_dynlib default_dynlib[] = {
 	{ "abort", (uintptr_t)&abort_hook },
 	{ "access", (uintptr_t)&access_hook },
 	{ "acos", (uintptr_t)&acos },
+	{ "acosh", (uintptr_t)&acosh },
 	{ "acosf", (uintptr_t)&acosf },
 	{ "asin", (uintptr_t)&asin },
+	{ "asinh", (uintptr_t)&asinh },
 	{ "asinf", (uintptr_t)&asinf },
 	{ "atan", (uintptr_t)&atan },
+	{ "atanh", (uintptr_t)&atanh },
 	{ "atan2", (uintptr_t)&atan2 },
 	{ "atan2f", (uintptr_t)&atan2f },
 	{ "atanf", (uintptr_t)&atanf },
 	{ "atoi", (uintptr_t)&atoi },
+	{ "atol", (uintptr_t)&atol },
 	{ "atoll", (uintptr_t)&atoll },
 	{ "basename", (uintptr_t)&basename },
 	// { "bind", (uintptr_t)&bind },
@@ -823,7 +906,9 @@ static so_default_dynlib default_dynlib[] = {
 	{ "dlsym", (uintptr_t)&dlsym_hook },
 	{ "exit", (uintptr_t)&exit },
 	{ "exp", (uintptr_t)&exp },
+	{ "exp2", (uintptr_t)&exp2 },
 	{ "expf", (uintptr_t)&expf },
+	{ "fabsf", (uintptr_t)&fabsf },
 	{ "fclose", (uintptr_t)&fclose },
 	{ "fcntl", (uintptr_t)&ret0 },
 	{ "fdopen", (uintptr_t)&fdopen },
@@ -836,18 +921,20 @@ static so_default_dynlib default_dynlib[] = {
 	{ "fmodf", (uintptr_t)&fmodf },
 	{ "fnmatch", (uintptr_t)&fnmatch },
 	{ "fopen", (uintptr_t)&fopen_hook },
-	{ "fprintf", (uintptr_t)&fprintf_hook },
+	{ "fprintf", (uintptr_t)&fprintf },
 	{ "fputc", (uintptr_t)&fputc },
 	{ "fputs", (uintptr_t)&fputs },
 	{ "fread", (uintptr_t)&fread },
 	{ "free", (uintptr_t)&vglFree },
 	{ "frexp", (uintptr_t)&frexp },
 	{ "frexpf", (uintptr_t)&frexpf },
+	{ "fscanf", (uintptr_t)&fscanf },
 	{ "fseek", (uintptr_t)&fseek },
 	{ "fstat", (uintptr_t)&fstat_hook },
 	{ "ftell", (uintptr_t)&ftell },
 	{ "ftello", (uintptr_t)&ftello },
-	{ "fwrite", (uintptr_t)&fwrite_hook },
+	{ "ftruncate", (uintptr_t)&ftruncate },
+	{ "fwrite", (uintptr_t)&fwrite },
 	{ "getc", (uintptr_t)&getc },
 	{ "getpid", (uintptr_t)&ret0 },
 	{ "getcwd", (uintptr_t)&getcwd_hook },
@@ -884,6 +971,7 @@ static so_default_dynlib default_dynlib[] = {
 	// { "listen", (uintptr_t)&listen },
 	{ "localtime_r", (uintptr_t)&localtime_r },
 	{ "log", (uintptr_t)&log },
+	{ "logf", (uintptr_t)&logf },
 	{ "log10", (uintptr_t)&log10 },
 	{ "log10f", (uintptr_t)&log10f },
 	{ "longjmp", (uintptr_t)&longjmp },
@@ -917,6 +1005,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "pthread_cond_broadcast", (uintptr_t)&pthread_cond_broadcast_fake},
 	{ "pthread_cond_wait", (uintptr_t)&pthread_cond_wait_fake},
 	{ "pthread_cond_destroy", (uintptr_t)&pthread_cond_destroy_fake},
+	{ "pthread_cond_timedwait", (uintptr_t)&pthread_cond_timedwait_fake},
 	{ "pthread_cond_timedwait_relative_np", (uintptr_t)&pthread_cond_timedwait_relative_np_fake}, // FIXME
 	{ "pthread_create", (uintptr_t)&pthread_create_fake },
 	{ "pthread_getschedparam", (uintptr_t)&pthread_getschedparam },
@@ -977,6 +1066,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "strdup", (uintptr_t)&strdup },
 	{ "strerror", (uintptr_t)&strerror },
 	{ "strftime", (uintptr_t)&strftime },
+	{ "strlcpy", (uintptr_t)&strlcpy },
 	{ "strlen", (uintptr_t)&strlen },
 	{ "strncasecmp", (uintptr_t)&sceClibStrncasecmp },
 	{ "strncat", (uintptr_t)&sceClibStrncat },
@@ -988,6 +1078,8 @@ static so_default_dynlib default_dynlib[] = {
 	{ "strtod", (uintptr_t)&strtod },
 	{ "strtol", (uintptr_t)&strtol },
 	{ "strtoul", (uintptr_t)&strtoul },
+	{ "strtoll", (uintptr_t)&strtoll },
+	{ "strtoull", (uintptr_t)&strtoull },
 	{ "strxfrm", (uintptr_t)&strxfrm },
 	{ "sysconf", (uintptr_t)&ret0 },
 	{ "tan", (uintptr_t)&tan },
@@ -1069,6 +1161,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "SDL_MinimizeWindow", (uintptr_t)&SDL_MinimizeWindow },
 	{ "SDL_PeepEvents", (uintptr_t)&SDL_PeepEvents },
 	{ "SDL_PumpEvents", (uintptr_t)&SDL_PumpEvents },
+	{ "SDL_PushEvent", (uintptr_t)&SDL_PushEvent },
 	{ "SDL_PollEvent", (uintptr_t)&SDL_PollEvent },
 	{ "SDL_QueryTexture", (uintptr_t)&SDL_QueryTexture },
 	{ "SDL_Quit", (uintptr_t)&SDL_Quit },
@@ -1139,6 +1232,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "SDL_SetMainReady", (uintptr_t)&SDL_SetMainReady },
 	{ "SDL_NumAccelerometers", (uintptr_t)&ret0 },
 	{ "Android_JNI_GetEnv", (uintptr_t)&Android_JNI_GetEnv },
+	{ "raise", (uintptr_t)&raise },
 };
 static size_t numhooks = sizeof(default_dynlib) / sizeof(*default_dynlib);
 
@@ -1437,13 +1531,18 @@ int main(int argc, char *argv[]) {
 	if (!file_exists("ur0:/data/libshacccg.suprx") && !file_exists("ur0:/data/external/libshacccg.suprx"))
 		fatal_error("Error libshacccg.suprx is not installed.");
 
+	printf("Loading libc++_shared\n");
 	if (so_file_load(&stdcpp_mod, DATA_PATH "/libc++_shared.so", LOAD_ADDRESS) < 0)
 		fatal_error("Error could not load %s.", DATA_PATH "/libc++_shared.so");
 	so_relocate(&stdcpp_mod);
 	so_resolve(&stdcpp_mod, default_dynlib, sizeof(default_dynlib), 0);
+	
+	hooks[1] = hook_addr(so_symbol(&stdcpp_mod, "__dynamic_cast"), dynamic_cast_hook);
+	
 	so_flush_caches(&stdcpp_mod);
 	so_initialize(&stdcpp_mod);
 	
+	printf("Loading iconv\n");
 	if (so_file_load(&iconv_mod, DATA_PATH "/libiconv.so", LOAD_ADDRESS + 0x1000000) < 0)
 		fatal_error("Error could not load %s.", DATA_PATH "/libiconv.so");
 	so_relocate(&iconv_mod);
@@ -1451,6 +1550,7 @@ int main(int argc, char *argv[]) {
 	so_flush_caches(&iconv_mod);
 	so_initialize(&iconv_mod);
 	
+	printf("Loading libObbVfs\n");
 	if (so_file_load(&obbvfs_mod, DATA_PATH "/libObbVfs.so", LOAD_ADDRESS + 0x2000000) < 0)
 		fatal_error("Error could not load %s.", DATA_PATH "/libObbVfs.so");
 	so_relocate(&obbvfs_mod);
@@ -1458,6 +1558,7 @@ int main(int argc, char *argv[]) {
 	so_flush_caches(&obbvfs_mod);
 	so_initialize(&obbvfs_mod);
 
+	printf("Loading libFahrenheit\n");
 	if (so_file_load(&fahrenheit_mod, SO_PATH, LOAD_ADDRESS + 0x3000000) < 0)
 		fatal_error("Error could not load %s.", SO_PATH);
 
