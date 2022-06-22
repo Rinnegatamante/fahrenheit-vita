@@ -350,16 +350,36 @@ int GetEnv(void *vm, void **env, int r2) {
 
 so_hook hooks[2];
 
-int SetTexture(void *a1, unsigned int a2, int a3) {
-	int *astar = (int *)a3;
+void (*StateBlock_RecordSetTexture)(int texunit, int texture);
+
+int SetTexture(int *unk, unsigned int texunit, int *texture) {
+	if (!unk[2690]) {
+		glActiveTexture(texunit);
+		if (texture) {
+			glBindTexture(GL_TEXTURE_2D, 100);
+		} else {
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+	}
+	/*printf("SetTexture %x %x %x\n", a1, a2, a3);
+	if (a3) {
+		for (int i = 0; i < 40; i++) {
+			printf("[%d] %08X\n", i, a3[i]);
+		}
+	}
+	glActiveTexture(a2);*/
 	//printf("SetTexture(a3 %x, v6 %x, v9 %x, *(v9 + 24) %x)\n", a3, *astar, *(int *)(*astar - 4), *((int *)(*(int *)(*astar - 4)) + 24));
-	return SO_CONTINUE(int, hooks[0], a1, a2, 0);
+	StateBlock_RecordSetTexture(texunit, texture);
+	return 0;
 }
 
 #define _DWORD int
 
-int dynamic_cast_hook(int *a1, int a2, int a3, int a4)
+extern int __dynamic_cast(int *a1, int a2, int a3, int a4);
+
+int dynamic_cast_hook(int *a1, int *a2, int *a3, int a4)
 {
+  printf("dynamic cast %x %x %x %x\n", a1, a2, a3, a4);
   int *v4; // r6
   int v5; // r5
   int v6; // r0
@@ -457,7 +477,8 @@ LABEL_25:
 }*/
 
 void patch_game(void) {
-	hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
+	//StateBlock_RecordSetTexture = (void *)so_symbol(&fahrenheit_mod, "_Z27StateBlock_RecordSetTexturemP21IDirect3DBaseTexture9");
+	//hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
 }
 
 extern void *__aeabi_atexit;
@@ -476,10 +497,10 @@ int open(const char *pathname, int flags);
 
 static int __stack_chk_guard_fake = 0x42424242;
 
-static FILE __sF_fake[0x100][3];
+static FILE __sF_fake[0x1000][3];
 
 int stat_hook(const char *pathname, void *statbuf) {
-	printf("stat(%s)\n", pathname);
+	//printf("stat(%s)\n", pathname);
 	struct stat st;
 	int res;
 	if (!strstr(pathname, "ux0:")) {
@@ -517,19 +538,9 @@ char *obbs[2] = {
 int obbs_idx = 0;
 FILE *fopen_hook(char *fname, char *mode) {
 	char real_fname[256];
-	printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
+	//printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
 	if (strlen(fname) == 0) {
 		return fopen(obbs[obbs_idx++], mode);
-	}
-	if (strstr(fname, ".ktx")) {
-		int len = strlen(fname);
-		fname[len - 4] = 0;
-		if (!strstr(fname, "ux0:"))
-			sprintf(real_fname, "ux0:data/fahrenheit/%s.dds", fname);
-		else
-			sprintf(real_fname, "%s.dds", fname);
-		fname[len - 4] = '.';
-		return fopen(real_fname, mode);
 	}
 	if (!strstr(fname, "ux0:")) {
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
@@ -539,7 +550,7 @@ FILE *fopen_hook(char *fname, char *mode) {
 }
 
 int mkdir_hook(const char *pathname, mode_t mode) {
-	printf("mkdir(%s)\n", pathname);
+	//printf("mkdir(%s)\n", pathname);
 	if (!strstr(pathname, "ux0:")) {
 		char real_fname[256];
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
@@ -603,26 +614,26 @@ int chdir_hook(const char *path) {
 }
 
 int access_hook(const char *pathname, int mode) {
-	printf("access %s\n", pathname);
+	//printf("access %s\n", pathname);
+	int r;
 	if (!strstr(pathname, "ux0:")) {
 		char real_fname[256];
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
-		int r = !file_exists(real_fname);
-		printf("res: %d\n", r);
-		return r ? -1 : 0;
-	}
-	return !file_exists(pathname);
+		r = !file_exists(real_fname);
+	} else
+		r = !file_exists(pathname);
+	return r ? -1 : 0;
 }
 
 void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, const GLint *length) {
-	printf("Shader with count %d\n", count);
+	//printf("Shader with count %d\n", count);
 	
 	uint32_t sha1[5];
 	SHA1_CTX ctx;
 	
 	char *tmp = vglMalloc(1 * 1024 * 1024);
-	if (!tmp)
-		printf("OUT OF MEM!!!!\n");
+	//if (!tmp)
+	//	printf("OUT OF MEM!!!!\n");
 	char *p = tmp;
 	uint32_t tmp_idx = 0;
 	for (int i = 0; i < count; i++) {
@@ -651,16 +662,16 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 		fwrite(tmp, 1, strlen(tmp), file);
 		fclose(file);
 		
-		printf("Auto translation attempt...\n");
+		//printf("Auto translation attempt...\n");
 		char *tmp2 = vglMalloc(1 * 1024 * 1024);
-		if (!tmp2)
-			printf("OUT OF MEM (2)!!!!\n");
+		//if (!tmp2)
+		//	printf("OUT OF MEM (2)!!!!\n");
 		tmp += 13;
 		char *s = strstr(tmp, "#if defined GL_ES");
 		if (!s) printf("wtf\n");
 		size_t shaderSize;
 		if (strstr(tmp, "u_modelViewProjectionMatrix")) { // Vertex shader
-			printf("Vertex shader detected\n");
+			//printf("Vertex shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/vert.cg");
@@ -672,7 +683,7 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 			fclose(file);
 			p[shaderSize] = 0;
 		} else { // Fragment Shader
-			printf("Fragment shader detected\n");
+			//printf("Fragment shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/frag.cg");
@@ -690,7 +701,7 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 		fwrite(tmp2, 1, strlen(tmp2), file);
 		fclose(file);
 		*/
-		printf("Compiling resulting shader\n");
+		//printf("Compiling resulting shader\n");
 		glShaderSource(shader, 1, &tmp2, NULL);
 		glCompileShader(shader);
 		vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
@@ -699,7 +710,7 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 		fclose(file);
 		vglFree(tmp2);
 		vglFree(tmp - 13);
-		printf("Auto translation completed!\n");
+		//printf("Auto translation completed!\n");
 	} else {
 		vglFree(tmp);
 
@@ -742,7 +753,7 @@ void *SDL_GL_GetProcAddress_fake(const char *symbol) {
 }
 
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
-	printf("readlink(%s)\n", pathname);
+	//printf("readlink(%s)\n", pathname);
 	strncpy(buf, "ux0:data/fahrenheit/libFahrenheit.so", bufsiz);
 	return strlen(buf);
 }
@@ -784,7 +795,7 @@ int closedir_fake(android_DIR *dirp) {
 }
 
 android_DIR *opendir_fake(const char *dirname) {
-	printf("opendir(%s)\n", dirname);
+	//printf("opendir(%s)\n", dirname);
 	SceUID uid;
 	if (!strstr(dirname, "ux0:")) {
 		char real_fname[256];
@@ -959,7 +970,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "getenv", (uintptr_t)&ret0 },
 	{ "getwc", (uintptr_t)&getwc },
 	{ "gettimeofday", (uintptr_t)&gettimeofday },
-	{ "gzopen", (uintptr_t)&ret0 },
+	{ "gzopen", (uintptr_t)&gzopen },
 	{ "inflate", (uintptr_t)&inflate },
 	{ "inflateEnd", (uintptr_t)&inflateEnd },
 	{ "inflateInit_", (uintptr_t)&inflateInit_ },
@@ -1277,7 +1288,8 @@ enum MethodIDs {
 	INIT,
 	GET_SCREEN_HEIGHT_PIXEL,
 	GET_SCREEN_HEIGHT_INCH,
-	GET_HIGH_RESOLUTION
+	GET_HIGH_RESOLUTION,
+	GET_CURRENT_LANGUAGE
 } MethodIDs;
 
 typedef struct {
@@ -1290,10 +1302,11 @@ static NameToMethodID name_to_method_ids[] = {
 	{ "GetScreenHeightPixel", GET_SCREEN_HEIGHT_PIXEL },
 	{ "GetScreenHeightInch", GET_SCREEN_HEIGHT_INCH },
 	{ "GetHighResolution", GET_HIGH_RESOLUTION },
+	{ "getCurrentLanguage", GET_CURRENT_LANGUAGE },
 };
 
 int GetMethodID(void *env, void *class, const char *name, const char *sig) {
-	printf("%s\n", name);
+	//printf("GetMethodID: %s\n", name);
 
 	for (int i = 0; i < sizeof(name_to_method_ids) / sizeof(NameToMethodID); i++) {
 		if (strcmp(name, name_to_method_ids[i].name) == 0) {
@@ -1305,6 +1318,8 @@ int GetMethodID(void *env, void *class, const char *name, const char *sig) {
 }
 
 int GetStaticMethodID(void *env, void *class, const char *name, const char *sig) {
+	//printf("GetStaticMethodID: %s\n", name);
+	
 	for (int i = 0; i < sizeof(name_to_method_ids) / sizeof(NameToMethodID); i++) {
 		if (strcmp(name, name_to_method_ids[i].name) == 0)
 			return name_to_method_ids[i].id;
@@ -1326,9 +1341,24 @@ int CallStaticBooleanMethodV(void *env, void *obj, int methodID, uintptr_t *args
 }
 
 int CallStaticIntMethodV(void *env, void *obj, int methodID, uintptr_t *args) {
+	int lang;
 	switch (methodID) {
 	case GET_SCREEN_HEIGHT_PIXEL:
 		return 544;
+	case GET_CURRENT_LANGUAGE:
+		sceAppUtilSystemParamGetInt(SCE_SYSTEM_PARAM_ID_LANG, &lang);
+		switch (lang) {
+		case SCE_SYSTEM_PARAM_LANG_FRENCH:
+			return 1;
+		case SCE_SYSTEM_PARAM_LANG_GERMAN:
+			return 3;
+		case SCE_SYSTEM_PARAM_LANG_ITALIAN:
+			return 2;
+		case SCE_SYSTEM_PARAM_LANG_SPANISH:
+			return 4;
+		default: // En
+			return 0;
+		}
 	default:
 		return 0;	
 	}
@@ -1440,7 +1470,7 @@ void *GetStaticObjectField(void *env, void *clazz, int fieldID) {
 		strcpy(r, "sony");
 		return r;
 	case MODEL:
-		strcpy(r, "D6503");
+		strcpy(r, "PSVITA");
 		return r;
 	case BRAND:
 		strcpy(r, "PlayStation");
@@ -1488,7 +1518,7 @@ float CallStaticFloatMethodV(void *env, void *obj, int methodID, uintptr_t *args
 	}
 }
 
-int crasher(unsigned int argc, void *argv) {
+/*int crasher(unsigned int argc, void *argv) {
 	uint32_t *nullptr = NULL;
 	for (;;) {
 		SceCtrlData pad;
@@ -1496,9 +1526,9 @@ int crasher(unsigned int argc, void *argv) {
 		if (pad.buttons & SCE_CTRL_SELECT) *nullptr = 0;
 		sceKernelDelayThread(100);
 	}
-}
+}*/
 
-void abort_handler(KuKernelAbortContext *ctx) {
+/*void abort_handler(KuKernelAbortContext *ctx) {
 	printf("Crash Detected!!! (Abort Type: 0x%08X)\n", ctx->abortType);
 	printf("-----------------\n");
 	printf("PC: 0x%08X\n", ctx->pc);
@@ -1522,13 +1552,13 @@ void abort_handler(KuKernelAbortContext *ctx) {
 	printf("FSR: 0x%08X\n", ctx->FSR);
 	printf("FAR: 0x%08X\n", *(&(ctx->FSR) + 4)); // Using ctx->FAR gives an error for some weird reason
 	sceKernelExitProcess(0);
-}
+}*/
 
 int main(int argc, char *argv[]) {
 	//kuKernelRegisterAbortHandler(abort_handler, NULL);
 	//SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
 	//sceKernelStartThread(crasher_thread, 0, NULL);	
-	sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
+	//sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
 	
 	SceAppUtilInitParam init_param;
 	SceAppUtilBootParam boot_param;
@@ -1554,8 +1584,8 @@ int main(int argc, char *argv[]) {
 		fatal_error("Error could not load %s.", DATA_PATH "/libc++_shared.so");
 	so_relocate(&stdcpp_mod);
 	so_resolve(&stdcpp_mod, default_dynlib, sizeof(default_dynlib), 0);
-	
-	hooks[1] = hook_addr(so_symbol(&stdcpp_mod, "__dynamic_cast"), dynamic_cast_hook);
+
+	//hooks[1] = hook_addr(so_symbol(&stdcpp_mod, "__dynamic_cast"), dynamic_cast_hook);
 	
 	so_flush_caches(&stdcpp_mod);
 	so_initialize(&stdcpp_mod);
@@ -1627,7 +1657,7 @@ int main(int argc, char *argv[]) {
 	*(uintptr_t *)(fake_env + 0x2A8) = (uintptr_t)ret0;
 	*(uintptr_t *)(fake_env + 0x36C) = (uintptr_t)GetJavaVM;
 	*(uintptr_t *)(fake_env + 0x374) = (uintptr_t)GetStringUTFRegion;
-
+	
 	void (*Java_org_libsdl_app_SDLActivity_nativeInit)() = (void *)so_symbol(&fahrenheit_mod, "Java_org_libsdl_app_SDLActivity_nativeInit");
 	Java_org_libsdl_app_SDLActivity_nativeInit();
 	
