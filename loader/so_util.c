@@ -329,8 +329,6 @@ int so_relocate(so_module *mod) {
 		case R_ARM_ABS32:
 			if (sym->st_shndx != SHN_UNDEF)
 				*ptr += mod->text_base + sym->st_value;
-			else
-				*ptr = mod->text_base + rel->r_offset; // make it crash for debugging
 			break;
 		case R_ARM_RELATIVE:
 			*ptr += mod->text_base;
@@ -340,8 +338,6 @@ int so_relocate(so_module *mod) {
 		{
 			if (sym->st_shndx != SHN_UNDEF)
 				*ptr = mod->text_base + sym->st_value;
-			else
-				*ptr = mod->text_base + rel->r_offset; // make it crash for debugging
 			break;
 		}
 		default:
@@ -440,7 +436,10 @@ int so_resolve(so_module *mod, so_default_dynlib *default_dynlib, int size_defau
 					uintptr_t link = so_resolve_link(mod, mod->dynstr + sym->st_name);
 					if (link) {
 						// debugPrintf("Resolved from dependencies: %s\n", mod->dynstr + sym->st_name);
-						*ptr = link;
+						if (type == R_ARM_ABS32)
+							*ptr += link;
+						else
+							*ptr = link;
 						resolved = 1;
 					}
 				}

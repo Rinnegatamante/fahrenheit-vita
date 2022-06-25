@@ -310,7 +310,7 @@ int pthread_cond_timedwait_relative_np_fake(pthread_cond_t **cnd, pthread_mutex_
 		if (pthread_cond_init_fake(cnd, NULL) < 0)
 			return -1;
 	}
-
+	
 	if (ts != NULL) {
 		struct timespec ct;
 		clock_gettime_hook(0, &ct);
@@ -323,10 +323,7 @@ int pthread_cond_timedwait_relative_np_fake(pthread_cond_t **cnd, pthread_mutex_
 }
 
 int pthread_create_fake(pthread_t *thread, const void *unused, void *entry, void *arg) {
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, 0x40000);
-	return pthread_create(thread, &attr, entry, arg);
+	return pthread_create(thread, NULL, entry, arg);
 }
 
 int pthread_once_fake(volatile int *once_control, void (*init_routine)(void)) {
@@ -348,137 +345,7 @@ int GetEnv(void *vm, void **env, int r2) {
 	return 0;
 }
 
-so_hook hooks[2];
-
-void (*StateBlock_RecordSetTexture)(int texunit, int texture);
-
-int SetTexture(int *unk, unsigned int texunit, int *texture) {
-	if (!unk[2690]) {
-		glActiveTexture(texunit);
-		if (texture) {
-			glBindTexture(GL_TEXTURE_2D, 100);
-		} else {
-			glBindTexture(GL_TEXTURE_2D, 0);
-		}
-	}
-	/*printf("SetTexture %x %x %x\n", a1, a2, a3);
-	if (a3) {
-		for (int i = 0; i < 40; i++) {
-			printf("[%d] %08X\n", i, a3[i]);
-		}
-	}
-	glActiveTexture(a2);*/
-	//printf("SetTexture(a3 %x, v6 %x, v9 %x, *(v9 + 24) %x)\n", a3, *astar, *(int *)(*astar - 4), *((int *)(*(int *)(*astar - 4)) + 24));
-	StateBlock_RecordSetTexture(texunit, texture);
-	return 0;
-}
-
-#define _DWORD int
-
-extern int __dynamic_cast(int *a1, int a2, int a3, int a4);
-
-int dynamic_cast_hook(int *a1, int *a2, int *a3, int a4)
-{
-  printf("dynamic cast %x %x %x %x\n", a1, a2, a3, a4);
-  int *v4; // r6
-  int v5; // r5
-  int v6; // r0
-  int v7; // r8
-  int v8; // r9
-  int v9; // r4
-  int v10; // r6
-  int v11; // zf
-  int v12; // r1
-  int v13; // r3
-  int v14; // r2
-  int v15; // r1
-  int v17; // [sp+8h] [bp-44h]
-  int *v18; // [sp+Ch] [bp-40h]
-  int v19; // [sp+10h] [bp-3Ch]
-  int v20; // [sp+14h] [bp-38h]
-  uint8_t v21[39]; // [sp+18h] [bp-34h]
-
-  v4 = a1;
-  v5 = a3;
-  v6 = *a1;
-  v7 = 0;
-  v8 = *(_DWORD *)(v6 - 8);
-  v9 = *(_DWORD *)(v6 - 4);
-  v17 = a3;
-  v18 = v4;
-  v19 = a2;
-  v20 = a4;
-  sceClibMemset((int)v21, 39, 0);
-  v10 = (int)v4 + v8;
-  if ( v9 == v5 )
-  {
-    *(_DWORD *)&v21[32] = 1;
-    (*(void (__fastcall **)(int, int *, int, int, signed int, _DWORD, int, int *, int, int))(*(_DWORD *)v5 + 20))(
-      v5,
-      &v17,
-      v10,
-      v10,
-      1,
-      0,
-      v17,
-      v18,
-      v19,
-      v20);
-    if ( *(_DWORD *)&v21[8] == 1 )
-      v7 = v10;
-  }
-  else
-  {
-	printf("v9 is %x, a3 is %x, v6 is %x\n", v9, a3, v6);
-	if (v9) {
-		printf("*(v9 + 24) is %x\n", *(_DWORD *)v9 + 24);
-		(*(void (__fastcall **)(int, int *, int))(*(_DWORD *)v9 + 24))(v9, &v17, v10);
-	}
-    if ( *(_DWORD *)&v21[20] == 1 )
-    {
-      if ( *(_DWORD *)&v21[8] == 1 )
-        goto LABEL_25;
-      v7 = 0;
-      if ( !*(_DWORD *)&v21[24] )
-      {
-        v11 = *(_DWORD *)&v21[12] == 1;
-        if ( *(_DWORD *)&v21[12] == 1 )
-          v11 = *(_DWORD *)&v21[16] == 1;
-        if ( v11 )
-LABEL_25:
-          v7 = *(_DWORD *)v21;
-      }
-    }
-    else if ( !*(_DWORD *)&v21[20] )
-    {
-      v12 = *(_DWORD *)&v21[12];
-      v13 = *(_DWORD *)&v21[24];
-      v14 = *(_DWORD *)&v21[16];
-      if ( *(_DWORD *)&v21[12] != 1 )
-        v12 = 0;
-      if ( *(_DWORD *)&v21[24] != 1 )
-        v13 = 0;
-      v15 = v12 & v13;
-      if ( *(_DWORD *)&v21[16] != 1 )
-        v14 = 0;
-      v7 = v15 & v14;
-      if ( v15 & v14 )
-        v7 = *(_DWORD *)&v21[4];
-    }
-  }
-  return v7;
-}
-
-/*int dynamic_cast_hook(int a1, int a2, int a3, int a4) {
-	printf("dynamic cast called!!!\n");
-	int *astar = (int *)a1;
-	printf("dynamic_cast(a1 %x, v6 %x, v9 %x, *(v9 + 24) %x)\n", a1, *astar, *(int *)(*astar - 4), *((int *)(*(int *)(*astar - 4)) + 24));
-	return SO_CONTINUE(int, hooks[1], a1, a2, a3, a4);
-}*/
-
 void patch_game(void) {
-	//StateBlock_RecordSetTexture = (void *)so_symbol(&fahrenheit_mod, "_Z27StateBlock_RecordSetTexturemP21IDirect3DBaseTexture9");
-	//hooks[0] = hook_addr(so_symbol(&fahrenheit_mod, "_ZN19IDirect3DDevice_Mac10SetTextureEmP21IDirect3DBaseTexture9"), SetTexture);
 }
 
 extern void *__aeabi_atexit;
@@ -538,7 +405,7 @@ char *obbs[2] = {
 int obbs_idx = 0;
 FILE *fopen_hook(char *fname, char *mode) {
 	char real_fname[256];
-	//printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
+	printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
 	if (strlen(fname) == 0) {
 		return fopen(obbs[obbs_idx++], mode);
 	}
@@ -625,7 +492,7 @@ int access_hook(const char *pathname, int mode) {
 	return r ? -1 : 0;
 }
 
-void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, const GLint *length) {
+void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, const GLint *length) {
 	//printf("Shader with count %d\n", count);
 	
 	uint32_t sha1[5];
@@ -731,16 +598,29 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string, con
 	}
 }
 
+void glDeleteProgram_fake(GLuint prog) {
+	GLuint shaders[2];
+	GLsizei count;
+	glGetAttachedShaders(prog, 2, &count, shaders);
+	for (int i = 0; i < count; i++) {
+		glDeleteShader(shaders[i]);
+	}
+	glDeleteProgram(prog);
+}
+
 static so_default_dynlib gl_hook[] = {
-	{"glShaderSource", (uintptr_t)&glShaderSourceHook},
+	{"glShaderSource", (uintptr_t)&glShaderSource_fake},
 	{"glCompileShader", (uintptr_t)&ret0},
 	{"glPixelStorei", (uintptr_t)&ret0},
 	{"glBlendColor", (uintptr_t)&ret0},
 	{"glDeleteShader", (uintptr_t)&ret0},
+	{"glDeleteProgram", (uintptr_t)&glDeleteProgram_fake},
+	{"glReleaseShaderCompiler", (uintptr_t)&ret0},
 };
 static size_t gl_numhook = sizeof(gl_hook) / sizeof(*gl_hook);
 
 void *SDL_GL_GetProcAddress_fake(const char *symbol) {
+	printf("looking for symbol %s\n", symbol);
 	for (size_t i = 0; i < gl_numhook; ++i) {
 		if (!strcmp(symbol, gl_hook[i].symbol)) {
 			return (void *)gl_hook[i].func;
@@ -754,7 +634,7 @@ void *SDL_GL_GetProcAddress_fake(const char *symbol) {
 
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
 	//printf("readlink(%s)\n", pathname);
-	strncpy(buf, "ux0:data/fahrenheit/libFahrenheit.so", bufsiz);
+	strncpy(buf, "ux0:data/fahrenheit/libFahrenheit.so", bufsiz - 1);
 	return strlen(buf);
 }
 
@@ -1062,6 +942,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "putwc", (uintptr_t)&putwc },
 	{ "qsort", (uintptr_t)&qsort },
 	{ "read", (uintptr_t)&read },
+	{ "realpath", (uintptr_t)&realpath },
 	{ "realloc", (uintptr_t)&vglRealloc },
 	// { "recv", (uintptr_t)&recv },
 	{ "rint", (uintptr_t)&rint },
@@ -1069,7 +950,7 @@ static so_default_dynlib default_dynlib[] = {
 	// { "sendto", (uintptr_t)&sendto },
 	{ "setenv", (uintptr_t)&ret0 },
 	{ "setjmp", (uintptr_t)&setjmp },
-	// { "setlocale", (uintptr_t)&setlocale },
+	{ "setlocale", (uintptr_t)&ret0 },
 	// { "setsockopt", (uintptr_t)&setsockopt },
 	{ "setvbuf", (uintptr_t)&setvbuf },
 	{ "sin", (uintptr_t)&sin },
@@ -1558,7 +1439,7 @@ int main(int argc, char *argv[]) {
 	//kuKernelRegisterAbortHandler(abort_handler, NULL);
 	//SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
 	//sceKernelStartThread(crasher_thread, 0, NULL);	
-	//sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
+	sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
 	
 	SceAppUtilInitParam init_param;
 	SceAppUtilBootParam boot_param;
@@ -1585,8 +1466,6 @@ int main(int argc, char *argv[]) {
 	so_relocate(&stdcpp_mod);
 	so_resolve(&stdcpp_mod, default_dynlib, sizeof(default_dynlib), 0);
 
-	//hooks[1] = hook_addr(so_symbol(&stdcpp_mod, "__dynamic_cast"), dynamic_cast_hook);
-	
 	so_flush_caches(&stdcpp_mod);
 	so_initialize(&stdcpp_mod);
 	
@@ -1609,16 +1488,15 @@ int main(int argc, char *argv[]) {
 	printf("Loading libFahrenheit\n");
 	if (so_file_load(&fahrenheit_mod, SO_PATH, LOAD_ADDRESS + 0x3000000) < 0)
 		fatal_error("Error could not load %s.", SO_PATH);
-
 	so_relocate(&fahrenheit_mod);
 	so_resolve(&fahrenheit_mod, default_dynlib, sizeof(default_dynlib), 0);
 
 	patch_game();
 	so_flush_caches(&fahrenheit_mod);
-
 	so_initialize(&fahrenheit_mod);
 	
-	vglInitExtended(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
+	//vglInitExtended(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X); // Debug (Has common dialog usable)
 
 	memset(fake_vm, 'A', sizeof(fake_vm));
 	*(uintptr_t *)(fake_vm + 0x00) = (uintptr_t)fake_vm; // just point to itself...
