@@ -45,6 +45,8 @@
 #include "sha1.h"
 #include "libc_bridge.h"
 
+uint8_t ps2_mode = 1;
+
 extern const char *BIONIC_ctype_;
 extern const short *BIONIC_tolower_tab_;
 extern const short *BIONIC_toupper_tab_;
@@ -293,7 +295,8 @@ int pthread_cond_timedwait_fake(pthread_cond_t **cnd, pthread_mutex_t **mtx, con
 		if (pthread_cond_init_fake(cnd, NULL) < 0)
 			return -1;
 	}
-	return pthread_cond_timedwait(*cnd, *mtx, t);
+	sceKernelDelayThread(1000);
+	return 0;
 }
 
 int clock_gettime_hook(int clk_id, struct timespec *t) {
@@ -348,6 +351,8 @@ int GetEnv(void *vm, void **env, int r2) {
 }
 
 void patch_game(void) {
+	if (ps2_mode)
+		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), ret0);
 }
 
 extern void *__aeabi_atexit;
