@@ -43,6 +43,7 @@
 #include "dialog.h"
 #include "so_util.h"
 #include "sha1.h"
+#include "libc_bridge.h"
 
 extern const char *BIONIC_ctype_;
 extern const short *BIONIC_tolower_tab_;
@@ -56,6 +57,7 @@ int file_exists(const char *path) {
 	return sceIoGetstat(path, &stat) >= 0;
 }
 
+int sceLibcHeapSize = MEMORY_SCELIBC_MB * 1024 * 1024;
 int _newlib_heap_size_user = MEMORY_NEWLIB_MB * 1024 * 1024;
 
 unsigned int _pthread_stack_default_user = 1 * 1024 * 1024;
@@ -405,15 +407,22 @@ char *obbs[2] = {
 int obbs_idx = 0;
 FILE *fopen_hook(char *fname, char *mode) {
 	char real_fname[256];
-	printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
+	//printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
 	if (strlen(fname) == 0) {
-		return fopen(obbs[obbs_idx++], mode);
+		return sceLibcBridge_fopen(obbs[obbs_idx++], mode);
+	}
+	char *s = strstr(fname, ".ktx");
+	if (s) {
+		fname[s - fname] = 0;
+		sprintf(real_fname, "ux0:data/fahrenheit/%s.dxt", fname);
+		fname[s - fname] = '.';
+		return sceLibcBridge_fopen(real_fname, mode);
 	}
 	if (!strstr(fname, "ux0:")) {
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
-		return fopen(real_fname, mode);
+		return sceLibcBridge_fopen(real_fname, mode);
 	}
-	return fopen(fname, mode);
+	return sceLibcBridge_fopen(fname, mode);
 }
 
 int mkdir_hook(const char *pathname, mode_t mode) {
@@ -498,42 +507,31 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 	uint32_t sha1[5];
 	SHA1_CTX ctx;
 	
-	char *tmp = vglMalloc(1 * 1024 * 1024);
-	//if (!tmp)
-	//	printf("OUT OF MEM!!!!\n");
-	char *p = tmp;
-	uint32_t tmp_idx = 0;
-	for (int i = 0; i < count; i++) {
-		int size = length ? length[i] : strlen(string[i]);
-		sceClibMemcpy(p, string[i], size);
-		p[size] = '\n';
-		tmp_idx += size + 1;
-		p = &tmp[tmp_idx];
-	}
-	p[0] = 0;
-	
 	sha1_init(&ctx);
-	sha1_update(&ctx, (uint8_t *)tmp, strlen(tmp));
+	if (count > 1) {
+		sha1_update(&ctx, string[1], length ? length[1] : strlen(string[1]));
+	} else {
+		sha1_update(&ctx, string[0], length ? length[0] : strlen(string[0]));
+	}
 	sha1_final(&ctx, (uint8_t *)sha1);
 	
 	char sha_name[64];
 	snprintf(sha_name, sizeof(sha_name), "%08x%08x%08x%08x%08x", sha1[0], sha1[1], sha1[2], sha1[3], sha1[4]);
-	
 	char gxp_path[128], glsl_path[128];
 	snprintf(gxp_path, sizeof(gxp_path), "%s/%s.gxp", "ux0:data/fahrenheit/gxp", sha_name);
 
-	FILE *file = fopen(gxp_path, "rb");
+	FILE *file = sceLibcBridge_fopen(gxp_path, "rb");
 	if (!file) {
-		snprintf(glsl_path, sizeof(glsl_path), "%s/%s.glsl", "ux0:data/fahrenheit/glsl", sha_name);
-		file = fopen(glsl_path, "w");
-		fwrite(tmp, 1, strlen(tmp), file);
-		fclose(file);
+		char *tmp = string[1];
+		/*snprintf(glsl_path, sizeof(glsl_path), "%s/%s.glsl", "ux0:data/fahrenheit/glsl", sha_name);
+		file = sceLibcBridge_fopen(glsl_path, "w");
+		sceLibcBridge_fwrite(tmp, 1, strlen(tmp), file);
+		sceLibcBridge_fclose(file);*/
 		
 		//printf("Auto translation attempt...\n");
 		char *tmp2 = vglMalloc(1 * 1024 * 1024);
 		//if (!tmp2)
 		//	printf("OUT OF MEM (2)!!!!\n");
-		tmp += 13;
 		char *s = strstr(tmp, "#if defined GL_ES");
 		if (!s) printf("wtf\n");
 		size_t shaderSize;
@@ -542,24 +540,24 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/vert.cg");
-			file = fopen(glsl_path, "r");
-			fseek(file, 0, SEEK_END);
-			shaderSize = ftell(file);
-			fseek(file, 0, SEEK_SET);
-			fread(p, 1, shaderSize, file);
-			fclose(file);
+			file = sceLibcBridge_fopen(glsl_path, "r");
+			sceLibcBridge_fseek(file, 0, SEEK_END);
+			shaderSize = sceLibcBridge_ftell(file);
+			sceLibcBridge_fseek(file, 0, SEEK_SET);
+			sceLibcBridge_fread(p, 1, shaderSize, file);
+			sceLibcBridge_fclose(file);
 			p[shaderSize] = 0;
 		} else { // Fragment Shader
 			//printf("Fragment shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/frag.cg");
-			file = fopen(glsl_path, "r");
-			fseek(file, 0, SEEK_END);
-			shaderSize = ftell(file);
-			fseek(file, 0, SEEK_SET);
-			fread(p, 1, shaderSize, file);
-			fclose(file);
+			file = sceLibcBridge_fopen(glsl_path, "r");
+			sceLibcBridge_fseek(file, 0, SEEK_END);
+			shaderSize = sceLibcBridge_ftell(file);
+			sceLibcBridge_fseek(file, 0, SEEK_SET);
+			sceLibcBridge_fread(p, 1, shaderSize, file);
+			sceLibcBridge_fclose(file);
 			p[shaderSize] = 0;
 		}
 		/*
@@ -572,25 +570,22 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 		glShaderSource(shader, 1, &tmp2, NULL);
 		glCompileShader(shader);
 		vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
-		file = fopen(gxp_path, "w+");
-		fwrite(tmp2, 1, shaderSize, file);
-		fclose(file);
+		file = sceLibcBridge_fopen(gxp_path, "w+");
+		sceLibcBridge_fwrite(tmp2, 1, shaderSize, file);
+		sceLibcBridge_fclose(file);
 		vglFree(tmp2);
-		vglFree(tmp - 13);
 		//printf("Auto translation completed!\n");
 	} else {
-		vglFree(tmp);
-
 		size_t shaderSize;
 		void *shaderBuf;
 
-		fseek(file, 0, SEEK_END);
-		shaderSize = ftell(file);
-		fseek(file, 0, SEEK_SET);
+		sceLibcBridge_fseek(file, 0, SEEK_END);
+		shaderSize = sceLibcBridge_ftell(file);
+		sceLibcBridge_fseek(file, 0, SEEK_SET);
 
 		shaderBuf = vglMalloc(shaderSize);
-		fread(shaderBuf, 1, shaderSize, file);
-		fclose(file);
+		sceLibcBridge_fread(shaderBuf, 1, shaderSize, file);
+		sceLibcBridge_fclose(file);
 
 		glShaderBinary(1, &shader, 0, shaderBuf, shaderSize);
 
@@ -727,6 +722,10 @@ struct android_dirent *readdir_fake(android_DIR *dirp) {
 	return &dirp->dir;
 }
 
+off_t sceLibcBridge_ftello(FILE *stream) {
+	return (off_t)sceLibcBridge_ftell(stream);
+}
+
 static so_default_dynlib default_dynlib[] = {
 	{ "opendir", (uintptr_t)&opendir_fake },
 	{ "readdir", (uintptr_t)&readdir_fake },
@@ -817,7 +816,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "exp2", (uintptr_t)&exp2 },
 	{ "expf", (uintptr_t)&expf },
 	{ "fabsf", (uintptr_t)&fabsf },
-	{ "fclose", (uintptr_t)&fclose },
+	{ "fclose", (uintptr_t)&sceLibcBridge_fclose },
 	{ "fcntl", (uintptr_t)&ret0 },
 	{ "fdopen", (uintptr_t)&fdopen },
 	{ "ferror", (uintptr_t)&ferror },
@@ -829,21 +828,21 @@ static so_default_dynlib default_dynlib[] = {
 	{ "fmodf", (uintptr_t)&fmodf },
 	{ "fnmatch", (uintptr_t)&fnmatch },
 	{ "fopen", (uintptr_t)&fopen_hook },
-	{ "fprintf", (uintptr_t)&fprintf },
+	{ "fprintf", (uintptr_t)&sceLibcBridge_fprintf },
 	{ "fputc", (uintptr_t)&fputc },
 	{ "fputwc", (uintptr_t)&fputwc },
 	{ "fputs", (uintptr_t)&fputs },
-	{ "fread", (uintptr_t)&fread },
+	{ "fread", (uintptr_t)&sceLibcBridge_fread },
 	{ "free", (uintptr_t)&vglFree },
 	{ "frexp", (uintptr_t)&frexp },
 	{ "frexpf", (uintptr_t)&frexpf },
 	{ "fscanf", (uintptr_t)&fscanf },
-	{ "fseek", (uintptr_t)&fseek },
+	{ "fseek", (uintptr_t)&sceLibcBridge_fseek },
 	{ "fstat", (uintptr_t)&fstat_hook },
-	{ "ftell", (uintptr_t)&ftell },
-	{ "ftello", (uintptr_t)&ftello },
+	{ "ftell", (uintptr_t)&sceLibcBridge_ftell },
+	{ "ftello", (uintptr_t)&sceLibcBridge_ftello },
 	{ "ftruncate", (uintptr_t)&ftruncate },
-	{ "fwrite", (uintptr_t)&fwrite },
+	{ "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
 	{ "getc", (uintptr_t)&getc },
 	{ "getpid", (uintptr_t)&ret0 },
 	{ "getcwd", (uintptr_t)&getcwd_hook },
@@ -1439,7 +1438,7 @@ int main(int argc, char *argv[]) {
 	//kuKernelRegisterAbortHandler(abort_handler, NULL);
 	//SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
 	//sceKernelStartThread(crasher_thread, 0, NULL);	
-	sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
+	//sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
 	
 	SceAppUtilInitParam init_param;
 	SceAppUtilBootParam boot_param;
