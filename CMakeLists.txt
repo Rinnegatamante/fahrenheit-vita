@@ -8,27 +8,28 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   endif()
 endif()
 
-project(SoulCalibur C CXX)
+project(Fahrenheit C CXX)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
-set(VITA_APP_NAME "Soulcalibur")
-set(VITA_TITLEID  "SOULCLIBR")
+set(VITA_APP_NAME "Fahrenheit")
+set(VITA_TITLEID  "FAHRENEIT")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wl,-q,--wrap,memcpy,--wrap,memmove,--wrap,memset,--allow-multiple-definition -Wall -O2 -fdiagnostics-color=always -fno-optimize-sibling-calls -mfloat-abi=softfp")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++11 -Wno-write-strings")
 
-add_executable(SoulCalibur
+add_executable(Fahrenheit
   loader/main.c
   loader/dialog.c
   loader/so_util.c
   loader/ogg_patch.c
   loader/vorbis_patch.c
+  loader/obb_files.c
   loader/sha1.c
   loader/ctype_patch.c
   loader/fnmatch.c
 )
 
-target_link_libraries(SoulCalibur
+target_link_libraries(Fahrenheit
   -Wl,--whole-archive pthread -Wl,--no-whole-archive
   SDL2_mixer
   SDL2_image
@@ -72,8 +73,8 @@ target_link_libraries(SoulCalibur
   SceKernelDmacmgr_stub
 )
 
-vita_create_self(eboot.bin SoulCalibur UNSAFE)
-vita_create_vpk(SoulCalibur.vpk ${VITA_TITLEID} eboot.bin
+vita_create_self(eboot.bin Fahrenheit UNSAFE)
+vita_create_vpk(Fahrenheit.vpk ${VITA_TITLEID} eboot.bin
   VERSION ${VITA_VERSION}
   NAME ${VITA_APP_NAME}
   FILE ${CMAKE_SOURCE_DIR}/sce_sys/icon0.png sce_sys/icon0.png

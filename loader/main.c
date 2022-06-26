@@ -1,4 +1,4 @@
-/* main.c -- World of Goo .so loader
+/* main.c -- Fahrenehit: Indigo Prophecy .so loader
  *
  * Copyright (C) 2021 Andy Nguyen
  * Copyright (C) 2022 Rinnegatamante
@@ -416,7 +416,53 @@ void rrMutexUnlock(SceKernelLwMutexWork **work) {
 	sceKernelUnlockLwMutex(*work, 1);
 }
 
-so_hook display2d_hook;
+extern const char *obb_file_names[];
+extern uint32_t obb_files_num;
+
+so_hook display2d_hook, initvfs_hook;
+int extracted = 0;
+
+int (*orig_fseek)(FILE *f, int off, int mode);
+size_t (*orig_ftello)(FILE *f);
+int (*orig_fclose)(FILE *f);
+size_t (*orig_fread)(void *p, size_t dim, size_t num, FILE *f);
+FILE *(*orig_fopen)(const char *name, const char *mode);
+void extract_obbs() {
+	if (!extracted) {
+		sceIoMkdir("ux0:data/fahrenheit/textures", 0777);
+		extracted = 1;
+		if (file_exists(obb_file_names[0]))
+			return;
+		printf("Extracting %u files from the obb files...\n", obb_files_num);
+		for (int i = 0; i < obb_files_num; i++) {
+			printf("Extracting %s...\n", obb_file_names[i]);
+			FILE *f = orig_fopen(obb_file_names[i], "w+b");
+			if (f) {
+				orig_fseek(f, 0, SEEK_END);
+				size_t size = orig_ftello(f);
+				orig_fseek(f, 0, SEEK_SET);
+				void *buf = vglMalloc(size);
+				orig_fread(buf, 1, size, f);
+				char outname[512];
+				sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[i]);
+				FILE *f2 = sceLibcBridge_fopen(outname, "w+");
+				sceLibcBridge_fwrite(buf, 1, size, f2);
+				sceLibcBridge_fclose(f2);
+				vglFree(buf);
+				orig_fclose(f);
+			}
+		}
+		printf("Extraction finished!\n");
+		// TLDR: Once we have listed all files in the obbs, we want to delete the original obb files here
+	}
+}
+
+void initVfs(void *this) {
+	printf("Initing ObbVfs\n");
+	SO_CONTINUE(int, initvfs_hook, this);
+	extract_obbs();
+}
+
 void Display2D(void *this) {
 	glDisable(GL_SCISSOR_TEST);
 	SO_CONTINUE(int, display2d_hook, this);
@@ -441,7 +487,14 @@ void patch_game(void) {
 	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLock"), rrMutexLock);
 	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLockTimeout"), rrMutexLockTimeout);
 	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), rrMutexUnlock);
+
+	orig_fopen = (void *)so_symbol(&fahrenheit_mod, "fopen");
+	orig_fseek = (void *)so_symbol(&fahrenheit_mod, "fseek");
+	orig_ftello = (void *)so_symbol(&fahrenheit_mod, "ftello");
+	orig_fclose = (void *)so_symbol(&fahrenheit_mod, "fclose");
+	orig_fread = (void *)so_symbol(&fahrenheit_mod, "fread");
 	
+	initvfs_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), initVfs);
 	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), Display2D);
 }
 
@@ -496,20 +549,16 @@ int fstat_hook(int fd, void *statbuf) {
 }
 
 FILE *fopen_hook(char *fname, char *mode) {
+	FILE *f;
 	char real_fname[256];
-	//printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
-	char *s = strstr(fname, ".ktx");
-	if (s) {
-		fname[s - fname] = 0;
-		sprintf(real_fname, "ux0:data/fahrenheit/%s.dxt", fname);
-		fname[s - fname] = '.';
-		return sceLibcBridge_fopen(real_fname, mode);
-	}
 	if (!strstr(fname, "ux0:")) {
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
-		return sceLibcBridge_fopen(real_fname, mode);
-	}
-	return sceLibcBridge_fopen(fname, mode);
+		f = sceLibcBridge_fopen(real_fname, mode);
+	} else
+		f = sceLibcBridge_fopen(fname, mode);
+	if (!f)
+		printf("Failed to open file %s\n", fname);
+	return f;
 }
 
 int mkdir_hook(const char *pathname, mode_t mode) {
