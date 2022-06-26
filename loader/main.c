@@ -46,8 +46,72 @@
 #include "vorbis_patch.h"
 #include "sha1.h"
 #include "libc_bridge.h"
+#include "font_utils.h"
 
 #define EXTRACTOR_BUF_SIZE (32 * 1024 * 1024)
+
+so_hook display2d_hook, initvfs_hook;
+
+extern const char *obb_file_names[];
+extern uint32_t obb_files_num;
+
+uint32_t *frame_buf;
+volatile uint8_t is_extracting = 0;
+volatile uint32_t curr_extract_idx = 0;
+
+void vgl_debugger_draw_character(int character, int x, int y) {
+	for (int yy = 0; yy < 10; yy++) {
+		int xDisplacement = x;
+		int yDisplacement = (y + (yy<<1)) * SCREEN_W;
+		uint32_t* screenPos = frame_buf + xDisplacement + yDisplacement;
+
+		uint8_t charPos = font[character * 10 + yy];
+		for (int xx = 7; xx >= 2; xx--) {
+			uint32_t clr = ((charPos >> xx) & 1) ? 0xFFFFFFFF : 0x00000000;
+			*(screenPos) = clr;
+			*(screenPos + 1) = clr;
+			*(screenPos + SCREEN_W) = clr;
+			*(screenPos + SCREEN_W + 1) = clr;			
+			screenPos += 2;
+		}
+	}
+}
+void vgl_debugger_draw_string(int x, int y, const char *str) {
+	for (size_t i = 0; i < strlen(str); i++)
+		vgl_debugger_draw_character(str[i], x + i * 12, y);
+}
+void vgl_debugger_draw_string_format(int x, int y, const char *format, ...) {
+	char str[512] = { 0 };
+	va_list va;
+
+	va_start(va, format);
+	vsnprintf(str, 512, format, va);
+	va_end(va);
+
+	for (char* text = strtok(str, "\n"); text != NULL; text = strtok(NULL, "\n"), y += 20)
+		vgl_debugger_draw_string(x, y, text);
+}
+
+char wip_char[] = {'-', '/', '|', '\\'};
+uint8_t wip_idx = 0;
+void extractor_screen(void *framebuf) {
+	frame_buf = (uint32_t *)framebuf;
+	if (is_extracting) {
+		char progress_bar[12];
+		uint32_t percentage = (uint32_t)(((float)curr_extract_idx / (float)obb_files_num) * 100.0f);
+		sprintf(progress_bar, "%0*c", 1 + (percentage / 10), wip_char[wip_idx]);
+		wip_idx = (wip_idx + 1) % 4;
+		char *p = progress_bar;
+		while (*p) {
+			if (*p == '0')
+				*p = '=';
+			p++;
+		}
+		vgl_debugger_draw_string_format(5, 28, "[%-10s] %u%%\n", progress_bar, percentage);
+		vgl_debugger_draw_string(5, 8, "Extracting obb files, please wait...");
+		vgl_debugger_draw_string_format(5, 48, "%-75s", obb_file_names[curr_extract_idx]);
+	}
+}
 
 void recursive_mkdir(char *dir) {
 	char *p = dir;
@@ -111,6 +175,52 @@ void extract_file(const char *fname) {
 	printf("Extraction done!\n");
 }
 
+int extracted = 0;
+void extract_obbs() {
+	if (!extracted) {
+		skip_extract = 1;
+		is_extracting = 1;
+		extracted = 1;
+		char outname[512];
+		sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[obb_files_num - 1]);
+		//if (file_exists(outname))
+		//	return;
+		printf("Extracting %u files from the obb files...\n", obb_files_num);
+		for (int i = 0; i < obb_files_num; i++) {
+			vglSwapBuffers(GL_FALSE);
+			curr_extract_idx = i;
+			printf("Extracting %s...\n", obb_file_names[i]);
+			sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[i]);
+			if (file_exists(outname))
+				continue;
+			recursive_mkdir(outname);
+			FILE *f = orig_fopen(obb_file_names[i], "rb");
+			if (f) {
+				orig_fseek(f, 0, SEEK_END);
+				size_t size = orig_ftello(f);
+				orig_fseek(f, 0, SEEK_SET);
+				void *buf = vglMalloc(EXTRACTOR_BUF_SIZE);
+				size_t extracted = 0;
+				FILE *f2 = sceLibcBridge_fopen(outname, "w+");
+				while (extracted < size) {
+					vglSwapBuffers(GL_FALSE);
+					size_t read_size = (extracted + EXTRACTOR_BUF_SIZE) > size ? (size - extracted) : EXTRACTOR_BUF_SIZE;
+					orig_fread(buf, 1, read_size, f);
+					sceLibcBridge_fwrite(buf, 1, read_size, f2);
+					extracted += read_size;
+				}
+				sceLibcBridge_fclose(f2);
+				vglFree(buf);
+				orig_fclose(f);
+			}
+		}
+		printf("Extraction finished!\n");
+		skip_extract = 0;
+		is_extracting = 0;
+		// TLDR: Once we have listed all files in the obbs, we want to delete the original obb files here
+	}
+}
+
 int sceLibcHeapSize = MEMORY_SCELIBC_MB * 1024 * 1024;
 int _newlib_heap_size_user = MEMORY_NEWLIB_MB * 1024 * 1024;
 
@@ -144,7 +254,7 @@ int debugPrintf(char *text, ...) {
 	vsprintf(string, text, list);
 	va_end(list);
 
-	SceUID fd = sceIoOpen("ux0:data/goo_log.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
+	SceUID fd = sceIoOpen("ux0:data/fahrenheit_log.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
 	if (fd >= 0) {
 		sceIoWrite(fd, string, strlen(string));
 		sceIoClose(fd);
@@ -466,45 +576,6 @@ void rrMutexUnlock(SceKernelLwMutexWork **work) {
 	sceKernelUnlockLwMutex(*work, 1);
 }
 
-extern const char *obb_file_names[];
-extern uint32_t obb_files_num;
-
-so_hook display2d_hook, initvfs_hook;
-int extracted = 0;
-
-void extract_obbs() {
-	if (!extracted) {
-		extracted = 1;
-		char outname[512];
-		sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[0]);
-		if (file_exists(outname))
-			return;
-		printf("Extracting %u files from the obb files...\n", obb_files_num);
-		for (int i = 0; i < obb_files_num; i++) {
-			printf("Extracting %s...\n", obb_file_names[i]);
-			sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[i]);
-			if (file_exists(outname))
-				continue;
-			recursive_mkdir(outname);
-			FILE *f = orig_fopen(obb_file_names[i], "rb");
-			if (f) {
-				orig_fseek(f, 0, SEEK_END);
-				size_t size = orig_ftello(f);
-				orig_fseek(f, 0, SEEK_SET);
-				void *buf = vglMalloc(size);
-				orig_fread(buf, 1, size, f);
-				FILE *f2 = sceLibcBridge_fopen(outname, "w+");
-				sceLibcBridge_fwrite(buf, 1, size, f2);
-				sceLibcBridge_fclose(f2);
-				vglFree(buf);
-				orig_fclose(f);
-			}
-		}
-		printf("Extraction finished!\n");
-		// TLDR: Once we have listed all files in the obbs, we want to delete the original obb files here
-	}
-}
-
 void initVfs(void *this) {
 	printf("Initing ObbVfs\n");
 	SO_CONTINUE(int, initvfs_hook, this);
@@ -520,7 +591,7 @@ void patch_game(void) {
 	if (ps2_mode)
 		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), ret0);
 
-	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3KRN8I_OUTPUT4PushEPKcb"), QDT__KRN__I_OUTPUT__Push);
+	//hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3KRN8I_OUTPUT4PushEPKcb"), QDT__KRN__I_OUTPUT__Push);
 
 	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset16"), sceClibMemset);
 	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset32"), sceClibMemset);
@@ -542,7 +613,7 @@ void patch_game(void) {
 	orig_fclose = (void *)so_symbol(&fahrenheit_mod, "fclose");
 	orig_fread = (void *)so_symbol(&fahrenheit_mod, "fread");
 	
-	//initvfs_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), initVfs);
+	initvfs_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), initVfs);
 	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), Display2D);
 }
 
@@ -602,10 +673,11 @@ FILE *fopen_hook(char *fname, char *mode) {
 	if (!strstr(fname, "ux0:")) {
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
 		f = sceLibcBridge_fopen(real_fname, mode);
-	} else
+		if (!f && !skip_extract)
+			extract_file(fname);
+	} else {
 		f = sceLibcBridge_fopen(fname, mode);
-	if (!f && !skip_extract)
-		extract_file(fname);
+	}
 	return f;
 }
 
@@ -1041,7 +1113,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "frexpf", (uintptr_t)&frexpf },
 	// { "fscanf", (uintptr_t)&fscanf },
 	{ "fseek", (uintptr_t)&sceLibcBridge_fseek },
-	// { "fstat", (uintptr_t)&fstat_hook },
+	{ "fstat", (uintptr_t)&fstat_hook },
 	{ "ftell", (uintptr_t)&sceLibcBridge_ftell },
 	{ "ftello", (uintptr_t)&sceLibcBridge_ftello },
 	// { "ftruncate", (uintptr_t)&ftruncate },
@@ -1691,9 +1763,10 @@ int main(int argc, char *argv[]) {
 	so_flush_caches(&fahrenheit_mod);
 	so_initialize(&fahrenheit_mod);
 	
+	vglSetDisplayCallback(extractor_screen);
 	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
 	//vglInitExtended(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X); // Debug (Has common dialog usable)
-
+	
 	memset(fake_vm, 'A', sizeof(fake_vm));
 	*(uintptr_t *)(fake_vm + 0x00) = (uintptr_t)fake_vm; // just point to itself...
 	*(uintptr_t *)(fake_vm + 0x10) = (uintptr_t)ret0;
