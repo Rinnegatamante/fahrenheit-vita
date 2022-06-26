@@ -1635,6 +1635,9 @@ int main(int argc, char *argv[]) {
 	*(uintptr_t *)(fake_env + 0x36C) = (uintptr_t)GetJavaVM;
 	*(uintptr_t *)(fake_env + 0x374) = (uintptr_t)GetStringUTFRegion;
 	
+	// Disabling rearpad
+	SDL_setenv("VITA_DISABLE_TOUCH_BACK", "1", 1);
+	
 	void (*Java_com_aspyr_base_ASPYR_mainObbFileName)(void *env, int r1, char *filename) = (void *)so_symbol(&fahrenheit_mod, "Java_com_aspyr_base_ASPYR_mainObbFileName");
 	void (*Java_com_aspyr_base_ASPYR_patchObbFileName)(void *env, int r1, char *filename) = (void *)so_symbol(&fahrenheit_mod, "Java_com_aspyr_base_ASPYR_patchObbFileName");
 
