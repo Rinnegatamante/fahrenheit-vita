@@ -21,6 +21,7 @@ add_executable(SoulCalibur
   loader/main.c
   loader/dialog.c
   loader/so_util.c
+  loader/ogg_patch.c
   loader/vorbis_patch.c
   loader/sha1.c
   loader/ctype_patch.c

@@ -42,6 +42,7 @@
 #include "config.h"
 #include "dialog.h"
 #include "so_util.h"
+#include "ogg_patch.h"
 #include "vorbis_patch.h"
 #include "sha1.h"
 #include "libc_bridge.h"
@@ -1588,6 +1589,7 @@ int main(int argc, char *argv[]) {
 	so_resolve(&fahrenheit_mod, default_dynlib, sizeof(default_dynlib), 0);
 
 	patch_game();
+	patch_ogg();
 	patch_vorbis();
 	so_flush_caches(&fahrenheit_mod);
 	so_initialize(&fahrenheit_mod);
