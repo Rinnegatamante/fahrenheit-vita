@@ -47,6 +47,21 @@
 #include "sha1.h"
 #include "libc_bridge.h"
 
+#define EXTRACTOR_BUF_SIZE (32 * 1024 * 1024)
+
+void recursive_mkdir(char *dir) {
+	char *p = dir;
+	while (p) {
+		char *p2 = strstr(p, "/");
+		if (p2) {
+			p2[0] = 0;
+			sceIoMkdir(dir, 0777);
+			p = p2 + 1;
+			p2[0] = '/';
+		} else break;
+	}
+}
+
 uint8_t ps2_mode = 1;
 
 extern const char *BIONIC_ctype_;
@@ -59,6 +74,41 @@ static char fake_env[0x1000];
 int file_exists(const char *path) {
 	SceIoStat stat;
 	return sceIoGetstat(path, &stat) >= 0;
+}
+
+int (*orig_fseek)(FILE *f, int off, int mode);
+size_t (*orig_ftello)(FILE *f);
+int (*orig_fclose)(FILE *f);
+size_t (*orig_fread)(void *p, size_t dim, size_t num, FILE *f);
+FILE *(*orig_fopen)(const char *name, const char *mode);
+
+int skip_extract = 0;
+void extract_file(const char *fname) {
+	char outname[512];
+	sprintf(outname, "ux0:data/fahrenheit/%s", fname);
+	recursive_mkdir(outname);
+	printf("Extracting %s\n", fname);
+	skip_extract = 1;
+	FILE *f = orig_fopen(fname, "rb");
+	skip_extract = 0;
+	if (f) {
+		orig_fseek(f, 0, SEEK_END);
+		size_t size = orig_ftello(f);
+		orig_fseek(f, 0, SEEK_SET);
+		void *buf = vglMalloc(EXTRACTOR_BUF_SIZE);
+		size_t extracted = 0;
+		FILE *f2 = sceLibcBridge_fopen(outname, "w+");
+		while (extracted < size) {
+			size_t read_size = (extracted + EXTRACTOR_BUF_SIZE) > size ? (size - extracted) : EXTRACTOR_BUF_SIZE;
+			orig_fread(buf, 1, read_size, f);
+			sceLibcBridge_fwrite(buf, 1, read_size, f2);
+			extracted += read_size;
+		}
+		sceLibcBridge_fclose(f2);
+		vglFree(buf);
+		orig_fclose(f);
+	}
+	printf("Extraction done!\n");
 }
 
 int sceLibcHeapSize = MEMORY_SCELIBC_MB * 1024 * 1024;
@@ -422,29 +472,27 @@ extern uint32_t obb_files_num;
 so_hook display2d_hook, initvfs_hook;
 int extracted = 0;
 
-int (*orig_fseek)(FILE *f, int off, int mode);
-size_t (*orig_ftello)(FILE *f);
-int (*orig_fclose)(FILE *f);
-size_t (*orig_fread)(void *p, size_t dim, size_t num, FILE *f);
-FILE *(*orig_fopen)(const char *name, const char *mode);
 void extract_obbs() {
 	if (!extracted) {
-		sceIoMkdir("ux0:data/fahrenheit/textures", 0777);
 		extracted = 1;
-		if (file_exists(obb_file_names[0]))
+		char outname[512];
+		sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[0]);
+		if (file_exists(outname))
 			return;
 		printf("Extracting %u files from the obb files...\n", obb_files_num);
 		for (int i = 0; i < obb_files_num; i++) {
 			printf("Extracting %s...\n", obb_file_names[i]);
-			FILE *f = orig_fopen(obb_file_names[i], "w+b");
+			sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[i]);
+			if (file_exists(outname))
+				continue;
+			recursive_mkdir(outname);
+			FILE *f = orig_fopen(obb_file_names[i], "rb");
 			if (f) {
 				orig_fseek(f, 0, SEEK_END);
 				size_t size = orig_ftello(f);
 				orig_fseek(f, 0, SEEK_SET);
 				void *buf = vglMalloc(size);
 				orig_fread(buf, 1, size, f);
-				char outname[512];
-				sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[i]);
 				FILE *f2 = sceLibcBridge_fopen(outname, "w+");
 				sceLibcBridge_fwrite(buf, 1, size, f2);
 				sceLibcBridge_fclose(f2);
@@ -494,7 +542,7 @@ void patch_game(void) {
 	orig_fclose = (void *)so_symbol(&fahrenheit_mod, "fclose");
 	orig_fread = (void *)so_symbol(&fahrenheit_mod, "fread");
 	
-	initvfs_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), initVfs);
+	//initvfs_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), initVfs);
 	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), Display2D);
 }
 
@@ -556,8 +604,8 @@ FILE *fopen_hook(char *fname, char *mode) {
 		f = sceLibcBridge_fopen(real_fname, mode);
 	} else
 		f = sceLibcBridge_fopen(fname, mode);
-	if (!f)
-		printf("Failed to open file %s\n", fname);
+	if (!f && !skip_extract)
+		extract_file(fname);
 	return f;
 }
 

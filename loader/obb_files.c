@@ -3732,6 +3732,15 @@ const char *obb_file_names[] = {
 	"textures/IndigoProphecy_W512_H512_F827611204_T_0XDD0B583F0F7694C8.ktx",
 	"textures/IndigoProphecy_W512_H512_F827611204_T_0XE93344A806511F28.ktx",
 	"textures/IndigoProphecy_W512_H512_F894720068_T_0X3A73E8732450F9C1.ktx",
-	"Fahrenheit.ini"
+	"Fahrenheit.ini",
+	"bigfile_pc.dat",
+	"bigfile_pc.d01",
+	"bigfile_pc.d02",
+	"bigfile_pc.d03",
+	"bigfile_pc.d04",
+	"bigfile_pc.idm",
+	"bigfile_pc.dbg",
+	"resources/it.lproj/aslcore.json",
+	
 };
 uint32_t obb_files_num = sizeof(obb_file_names) / sizeof(*obb_file_names);
