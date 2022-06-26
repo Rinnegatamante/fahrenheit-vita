@@ -414,6 +414,12 @@ void rrMutexUnlock(SceKernelLwMutexWork **work) {
 	sceKernelUnlockLwMutex(*work, 1);
 }
 
+so_hook display2d_hook;
+void Display2D(void *this) {
+	glDisable(GL_SCISSOR_TEST);
+	SO_CONTINUE(int, display2d_hook, this);
+}
+
 void patch_game(void) {
 	if (ps2_mode)
 		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), ret0);
@@ -433,6 +439,8 @@ void patch_game(void) {
 	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLock"), rrMutexLock);
 	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLockTimeout"), rrMutexLockTimeout);
 	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), rrMutexUnlock);
+	
+	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), Display2D);
 }
 
 extern void *__aeabi_atexit;
@@ -680,6 +688,23 @@ void glDeleteProgram_fake(GLuint prog) {
 	glDeleteProgram(prog);
 }
 
+void glScissor_fake(GLint x, GLint y, GLsizei width, GLsizei height) {
+	if (height == 544)
+		return;
+	glScissor(x, y, width, height);
+}
+
+void SDL_GL_SwapWindow_fake(SDL_Window * window) {
+	SDL_GL_SwapWindow(window);
+	glScissor(0, 0, SCREEN_W, SCREEN_H);
+}
+
+void glDisable_fake(GLenum cap) {
+	if (cap == GL_SCISSOR_TEST)
+		return;
+	glDisable(cap);
+}
+
 static so_default_dynlib gl_hook[] = {
 	{"glShaderSource", (uintptr_t)&glShaderSource_fake},
 	{"glCompileShader", (uintptr_t)&ret0},
@@ -688,6 +713,8 @@ static so_default_dynlib gl_hook[] = {
 	{"glDeleteShader", (uintptr_t)&ret0},
 	{"glDeleteProgram", (uintptr_t)&glDeleteProgram_fake},
 	{"glReleaseShaderCompiler", (uintptr_t)&ret0},
+	{"glScissor", (uintptr_t)&glScissor_fake},
+	{"glDisable", (uintptr_t)&glDisable_fake},
 };
 static size_t gl_numhook = sizeof(gl_hook) / sizeof(*gl_hook);
 
@@ -1214,7 +1241,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "SDL_JoystickGetDeviceGUID", (uintptr_t)&SDL_JoystickGetDeviceGUID },
 	{ "SDL_GameControllerNameForIndex", (uintptr_t)&SDL_GameControllerNameForIndex },
 	{ "SDL_GetWindowFromID", (uintptr_t)&SDL_GetWindowFromID },
-	{ "SDL_GL_SwapWindow", (uintptr_t)&SDL_GL_SwapWindow },
+	{ "SDL_GL_SwapWindow", (uintptr_t)&SDL_GL_SwapWindow_fake },
 	{ "SDL_SetMainReady", (uintptr_t)&SDL_SetMainReady },
 	{ "SDL_NumAccelerometers", (uintptr_t)&ret0 },
 	{ "Android_JNI_GetEnv", (uintptr_t)&Android_JNI_GetEnv },
