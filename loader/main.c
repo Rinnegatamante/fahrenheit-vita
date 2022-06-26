@@ -79,24 +79,24 @@ void *__wrap_memset(void *s, int c, size_t n) {
 }
 
 char *getcwd_hook(char *buf, size_t size) {
-		strcpy(buf, DATA_PATH);
+	strcpy(buf, DATA_PATH);
 	return buf;
 }
 
 int debugPrintf(char *text, ...) {
 #ifdef DEBUG
-	//va_list list;
-	//static char string[0x8000];
+	va_list list;
+	static char string[0x8000];
 
-	//va_start(list, text);
-	//vsprintf(string, text, list);
-	//va_end(list);
+	va_start(list, text);
+	vsprintf(string, text, list);
+	va_end(list);
 
-	//SceUID fd = sceIoOpen("ux0:data/goo_log.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
-	//if (fd >= 0) {
-	//	sceIoWrite(fd, string, strlen(string));
-	//	sceIoClose(fd);
-	//}
+	SceUID fd = sceIoOpen("ux0:data/goo_log.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
+	if (fd >= 0) {
+		sceIoWrite(fd, string, strlen(string));
+		sceIoClose(fd);
+	}
 #endif
 	return 0;
 }
@@ -350,9 +350,89 @@ int GetEnv(void *vm, void **env, int r2) {
 	return 0;
 }
 
+void QDT__KRN__I_OUTPUT__Push(char *msg) {
+	printf("%s\n", msg);
+}
+
+int rrSemaphoreCreate(int *uid, int value) {
+	*uid = sceKernelCreateSema("sema", 0, value, 0x7fffffff, NULL);
+	if (*uid < 0)
+		return 0;
+	return 1;
+}
+
+void rrSemaphoreDestroy(int *uid) {
+	sceKernelDeleteSema(*uid);
+}
+
+int rrSemaphoreDecrementOrWait(int *uid, int ms) {
+	if (ms == -1) {
+		sceKernelWaitSema(*uid, 1, NULL);
+	} else {
+		SceUInt timeout = ms * 1000;
+		if (sceKernelWaitSema(*uid, 1, &timeout) < 0)
+			return 0;
+	}
+	return 1;
+}
+
+void rrSemaphoreIncrement(int *uid, int value) {
+	sceKernelSignalSema(*uid, value);
+}
+
+int rrMutexCreate(SceKernelLwMutexWork **work, int unk) {
+	*work = (SceKernelLwMutexWork *)memalign(8, sizeof(SceKernelLwMutexWork));
+	if (sceKernelCreateLwMutex(*work, "mutex", SCE_KERNEL_MUTEX_ATTR_RECURSIVE, 0, NULL) < 0)
+		return 0;
+	return 1;
+}
+
+void rrMutexDestroy(SceKernelLwMutexWork **work) {
+	sceKernelDeleteLwMutex(*work);
+	free(*work);
+}
+
+void rrMutexLock(SceKernelLwMutexWork **work) {
+	sceKernelLockLwMutex(*work, 1, NULL);
+}
+
+int rrMutexLockTimeout(SceKernelLwMutexWork **work, int ms) {
+	if (ms == -1) {
+		sceKernelLockLwMutex(*work, 1, NULL);
+	} else if (ms == 0) {
+		if (sceKernelTryLockLwMutex(*work, 1) < 0)
+			return 0;
+	} else {
+		SceUInt timeout = ms * 1000;
+		if (sceKernelLockLwMutex(*work, 1, &timeout) < 0)
+			return 0;
+	}
+	return 1;
+}
+
+void rrMutexUnlock(SceKernelLwMutexWork **work) {
+	sceKernelUnlockLwMutex(*work, 1);
+}
+
 void patch_game(void) {
 	if (ps2_mode)
 		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), ret0);
+
+	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3KRN8I_OUTPUT4PushEPKcb"), QDT__KRN__I_OUTPUT__Push);
+
+	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset16"), sceClibMemset);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset32"), sceClibMemset);
+
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreCreate"), rrSemaphoreCreate);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDestroy"), rrSemaphoreDestroy);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDecrementOrWait"), rrSemaphoreDecrementOrWait);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreIncrement"), rrSemaphoreIncrement);
+
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexCreate"), rrMutexCreate);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexDestroy"), rrMutexDestroy);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLock"), rrMutexLock);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLockTimeout"), rrMutexLockTimeout);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), rrMutexUnlock);
 }
 
 extern void *__aeabi_atexit;
@@ -389,11 +469,11 @@ int stat_hook(const char *pathname, void *statbuf) {
 }
 
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
-	return vglMalloc(length);
+	return vglMemalign(length, 0x1000);
 }
 
 int munmap(void *addr, size_t length) {
-	free(addr);
+	vglFree(addr);
 	return 0;
 }
 
@@ -405,17 +485,9 @@ int fstat_hook(int fd, void *statbuf) {
 	return res;
 }
 
-char *obbs[2] = {
-	"ux0:data/fahrenheit/main.obb",
-	"ux0:data/fahrenheit/patch.obb",
-};
-int obbs_idx = 0;
 FILE *fopen_hook(char *fname, char *mode) {
 	char real_fname[256];
 	//printf("opening %s with mode %s (len: %d)\n", fname, mode, strlen(fname));
-	if (strlen(fname) == 0) {
-		return sceLibcBridge_fopen(obbs[obbs_idx++], mode);
-	}
 	char *s = strstr(fname, ".ktx");
 	if (s) {
 		fname[s - fname] = 0;
@@ -823,10 +895,10 @@ static so_default_dynlib default_dynlib[] = {
 	{ "fabsf", (uintptr_t)&fabsf },
 	{ "fclose", (uintptr_t)&sceLibcBridge_fclose },
 	{ "fcntl", (uintptr_t)&ret0 },
-	{ "fdopen", (uintptr_t)&fdopen },
-	{ "ferror", (uintptr_t)&ferror },
-	{ "fflush", (uintptr_t)&fflush },
-	{ "fgets", (uintptr_t)&fgets },
+	// { "fdopen", (uintptr_t)&fdopen },
+	// { "ferror", (uintptr_t)&ferror },
+	// { "fflush", (uintptr_t)&fflush },
+	// { "fgets", (uintptr_t)&fgets },
 	{ "floor", (uintptr_t)&floor },
 	{ "floorf", (uintptr_t)&floorf },
 	{ "fmod", (uintptr_t)&fmod },
@@ -834,19 +906,19 @@ static so_default_dynlib default_dynlib[] = {
 	{ "fnmatch", (uintptr_t)&fnmatch },
 	{ "fopen", (uintptr_t)&fopen_hook },
 	{ "fprintf", (uintptr_t)&sceLibcBridge_fprintf },
-	{ "fputc", (uintptr_t)&fputc },
-	{ "fputwc", (uintptr_t)&fputwc },
-	{ "fputs", (uintptr_t)&fputs },
+	// { "fputc", (uintptr_t)&fputc },
+	// { "fputwc", (uintptr_t)&fputwc },
+	// { "fputs", (uintptr_t)&fputs },
 	{ "fread", (uintptr_t)&sceLibcBridge_fread },
 	{ "free", (uintptr_t)&vglFree },
 	{ "frexp", (uintptr_t)&frexp },
 	{ "frexpf", (uintptr_t)&frexpf },
-	{ "fscanf", (uintptr_t)&fscanf },
+	// { "fscanf", (uintptr_t)&fscanf },
 	{ "fseek", (uintptr_t)&sceLibcBridge_fseek },
-	{ "fstat", (uintptr_t)&fstat_hook },
+	// { "fstat", (uintptr_t)&fstat_hook },
 	{ "ftell", (uintptr_t)&sceLibcBridge_ftell },
 	{ "ftello", (uintptr_t)&sceLibcBridge_ftello },
-	{ "ftruncate", (uintptr_t)&ftruncate },
+	// { "ftruncate", (uintptr_t)&ftruncate },
 	{ "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
 	{ "getc", (uintptr_t)&getc },
 	{ "getpid", (uintptr_t)&ret0 },
@@ -896,13 +968,13 @@ static so_default_dynlib default_dynlib[] = {
 	{ "mbrtowc", (uintptr_t)&mbrtowc },
 	{ "memalign", (uintptr_t)&vglMemalign },
 	{ "memchr", (uintptr_t)&sceClibMemchr },
-	{ "memcmp", (uintptr_t)&memcmp },
+	{ "memcmp", (uintptr_t)&sceClibMemcmp },
 	{ "memcpy", (uintptr_t)&sceClibMemcpy },
 	{ "memmove", (uintptr_t)&sceClibMemmove },
 	{ "memset", (uintptr_t)&sceClibMemset },
 	{ "mkdir", (uintptr_t)&mkdir_hook },
-	{ "mmap", (uintptr_t)&mmap},
-	{ "munmap", (uintptr_t)&munmap},
+	// { "mmap", (uintptr_t)&mmap},
+	// { "munmap", (uintptr_t)&munmap},
 	{ "modf", (uintptr_t)&modf },
 	{ "modff", (uintptr_t)&modff },
 	// { "poll", (uintptr_t)&poll },
@@ -1347,25 +1419,17 @@ int GetStaticFieldID(void *env, void *clazz, const char *name, const char *sig) 
 }
 
 void *GetStaticObjectField(void *env, void *clazz, int fieldID) {
-	static char *r = NULL;
-	if (!r)
-		r = malloc(0x100);
 	switch (fieldID) {
 	case MANUFACTURER:
-		strcpy(r, "sony");
-		return r;
+		return "sony";
 	case MODEL:
-		strcpy(r, "PSVITA");
-		return r;
+		return "PSVITA";
 	case BRAND:
-		strcpy(r, "PlayStation");
-		return r;
+		return "PlayStation";
 	case DISPLAY:
-		strcpy(r, "AMOLED");
-		return r;
+		return "AMOLED";
 	case DEVICE:
-		strcpy(r, "PSVita");
-		return r;
+		return "PSVita";
 	default:
 		return NULL;
 	}
@@ -1540,6 +1604,12 @@ int main(int argc, char *argv[]) {
 	*(uintptr_t *)(fake_env + 0x36C) = (uintptr_t)GetJavaVM;
 	*(uintptr_t *)(fake_env + 0x374) = (uintptr_t)GetStringUTFRegion;
 	
+	void (*Java_com_aspyr_base_ASPYR_mainObbFileName)(void *env, int r1, char *filename) = (void *)so_symbol(&fahrenheit_mod, "Java_com_aspyr_base_ASPYR_mainObbFileName");
+	void (*Java_com_aspyr_base_ASPYR_patchObbFileName)(void *env, int r1, char *filename) = (void *)so_symbol(&fahrenheit_mod, "Java_com_aspyr_base_ASPYR_patchObbFileName");
+
+	Java_com_aspyr_base_ASPYR_mainObbFileName(fake_env, 0, "ux0:data/fahrenheit/main.obb");
+	Java_com_aspyr_base_ASPYR_patchObbFileName(fake_env, 0, "ux0:data/fahrenheit/patch.obb");
+
 	void (*Java_org_libsdl_app_SDLActivity_nativeInit)() = (void *)so_symbol(&fahrenheit_mod, "Java_org_libsdl_app_SDLActivity_nativeInit");
 	Java_org_libsdl_app_SDLActivity_nativeInit();
 	
