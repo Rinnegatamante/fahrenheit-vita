@@ -5,7 +5,7 @@
 #include "config.h"
 #include "so_util.h"
 
-extern so_module twom_mod;
+extern so_module fahrenheit_mod;
 
 int debugPrintf(char *text, ...);
 

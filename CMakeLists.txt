@@ -21,6 +21,8 @@ add_executable(SoulCalibur
   loader/main.c
   loader/dialog.c
   loader/so_util.c
+  loader/ogg_patch.c
+  loader/vorbis_patch.c
   loader/sha1.c
   loader/ctype_patch.c
   loader/fnmatch.c
@@ -82,6 +84,6 @@ vita_create_vpk(SoulCalibur.vpk ${VITA_TITLEID} eboot.bin
 )
 
 add_custom_target(copy
-  COMMAND cp eboot.bin E:/app/${VITA_TITLEID}/eboot.bin
+  COMMAND cp eboot.bin D:/app/${VITA_TITLEID}/eboot.bin
   DEPENDS eboot.bin
 )
