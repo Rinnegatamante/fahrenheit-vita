@@ -27,6 +27,7 @@ add_executable(Fahrenheit
   loader/sha1.c
   loader/ctype_patch.c
   loader/fnmatch.c
+  loader/fios.c
 )
 
 target_link_libraries(Fahrenheit

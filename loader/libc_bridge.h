@@ -39,4 +39,6 @@ int sceLibcBridge_fputc(int ch, FILE *stream);
 int sceLibcBridge_setjmp(jmp_buf env);
 void sceLibcBridge_longjmp(jmp_buf env, int val);
 
+int sceLibcBridge_getc(FILE *stream);
+
 #endif

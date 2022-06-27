@@ -47,6 +47,7 @@
 #include "sha1.h"
 #include "libc_bridge.h"
 #include "font_utils.h"
+#include "fios.h"
 
 #define EXTRACTOR_BUF_SIZE (32 * 1024 * 1024)
 
@@ -178,13 +179,13 @@ void extract_file(const char *fname) {
 int extracted = 0;
 void extract_obbs() {
 	if (!extracted) {
-		skip_extract = 1;
-		is_extracting = 1;
 		extracted = 1;
 		char outname[512];
 		sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[obb_files_num - 1]);
-		//if (file_exists(outname))
-		//	return;
+		if (file_exists(outname))
+			return;
+		skip_extract = 1;
+		is_extracting = 1;
 		printf("Extracting %u files from the obb files...\n", obb_files_num);
 		for (int i = 0; i < obb_files_num; i++) {
 			vglSwapBuffers(GL_FALSE);
@@ -667,14 +668,52 @@ int fstat_hook(int fd, void *statbuf) {
 	return res;
 }
 
+int fseek_hook(FILE *f, int dist, int off) {
+	if (f > 0x81000000)
+		return sceLibcBridge_fseek(f, dist, off);
+	
+	sceFiosFHSeek(f, dist, off);
+	return 0;
+}
+
+long ftell_hook(FILE *f) {
+	if (f > 0x81000000)
+		return sceLibcBridge_ftell(f);
+	
+	return sceFiosFHTell(f);
+}
+
+void fclose_hook(FILE *f) {
+	if (f > 0x81000000) {
+		sceLibcBridge_fclose(f);
+		return;
+	}
+
+	sceFiosFHCloseSync(NULL, f);
+}
+
+size_t fread_hook(void *p, size_t size, size_t num, FILE *f) {
+	if (f > 0x81000000)
+		return sceLibcBridge_fread(p, size, num, f);
+
+	sceFiosFHReadSync(NULL, f, p, size * num);
+	return num;
+}
+
 FILE *fopen_hook(char *fname, char *mode) {
 	FILE *f;
 	char real_fname[256];
-	if (!strstr(fname, "ux0:")) {
+	if (!strncmp(fname, "textures/", 9)) {
+		sprintf(real_fname, "%c%s", '/', fname);
+		if (sceFiosFHOpenSync(NULL, &f, real_fname, NULL)) {
+			printf("Textures not found inside the PSARC!!! %s\n", fname);
+			return NULL;
+		}
+	} else if (strncmp(fname, "ux0:", 4)) {
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
 		f = sceLibcBridge_fopen(real_fname, mode);
-		if (!f && !skip_extract)
-			extract_file(fname);
+		//if (!f && !skip_extract)
+		//	extract_file(fname);
 	} else {
 		f = sceLibcBridge_fopen(fname, mode);
 	}
@@ -1091,10 +1130,10 @@ static so_default_dynlib default_dynlib[] = {
 	{ "exp2", (uintptr_t)&exp2 },
 	{ "expf", (uintptr_t)&expf },
 	{ "fabsf", (uintptr_t)&fabsf },
-	{ "fclose", (uintptr_t)&sceLibcBridge_fclose },
+	{ "fclose", (uintptr_t)&fclose_hook },
 	{ "fcntl", (uintptr_t)&ret0 },
 	// { "fdopen", (uintptr_t)&fdopen },
-	// { "ferror", (uintptr_t)&ferror },
+	{ "ferror", (uintptr_t)&sceLibcBridge_ferror },
 	// { "fflush", (uintptr_t)&fflush },
 	// { "fgets", (uintptr_t)&fgets },
 	{ "floor", (uintptr_t)&floor },
@@ -1104,21 +1143,21 @@ static so_default_dynlib default_dynlib[] = {
 	{ "fnmatch", (uintptr_t)&fnmatch },
 	{ "fopen", (uintptr_t)&fopen_hook },
 	{ "fprintf", (uintptr_t)&sceLibcBridge_fprintf },
-	// { "fputc", (uintptr_t)&fputc },
+	{ "fputc", (uintptr_t)&sceLibcBridge_fputc },
 	// { "fputwc", (uintptr_t)&fputwc },
 	// { "fputs", (uintptr_t)&fputs },
-	{ "fread", (uintptr_t)&sceLibcBridge_fread },
+	{ "fread", (uintptr_t)&fread_hook },
 	{ "free", (uintptr_t)&vglFree },
 	{ "frexp", (uintptr_t)&frexp },
 	{ "frexpf", (uintptr_t)&frexpf },
 	// { "fscanf", (uintptr_t)&fscanf },
-	{ "fseek", (uintptr_t)&sceLibcBridge_fseek },
+	{ "fseek", (uintptr_t)&fseek_hook },
 	{ "fstat", (uintptr_t)&fstat_hook },
-	{ "ftell", (uintptr_t)&sceLibcBridge_ftell },
+	{ "ftell", (uintptr_t)&ftell_hook },
 	{ "ftello", (uintptr_t)&sceLibcBridge_ftello },
 	// { "ftruncate", (uintptr_t)&ftruncate },
 	{ "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
-	{ "getc", (uintptr_t)&getc },
+	{ "getc", (uintptr_t)&sceLibcBridge_getc },
 	{ "getpid", (uintptr_t)&ret0 },
 	{ "getcwd", (uintptr_t)&getcwd_hook },
 	{ "getenv", (uintptr_t)&ret0 },
@@ -1762,6 +1801,10 @@ int main(int argc, char *argv[]) {
 	patch_vorbis();
 	so_flush_caches(&fahrenheit_mod);
 	so_initialize(&fahrenheit_mod);
+	
+	int r = fios_init();
+	if (r < 0)
+		fatal_error("Error could not initialize fios. (0x%08X)", r);
 	
 	vglSetDisplayCallback(extractor_screen);
 	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
