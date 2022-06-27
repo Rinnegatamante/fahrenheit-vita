@@ -31,6 +31,8 @@ static char *g_RamCacheWorkBuffer;
 static int32_t g_TexturesHandle;
 static SceFiosBuffer g_MountBuffer;
 
+uint8_t psarc_exists = 0;
+
 int fios_init(void) {
 	int res;
 
@@ -57,24 +59,27 @@ int fios_init(void) {
 	if (res < 0)
 		return res;
 	
-	sceClibMemset(&g_PsarcContext, 0, sizeof(SceFiosPsarcDearchiverContext));
-	g_PsarcContext.size = sizeof(SceFiosPsarcDearchiverContext);
-	g_PsarcContext.pWorkBuffer = memalign(64, PSARCCACHEBLOCKSIZE);
-	g_PsarcContext.workBufferSize = PSARCCACHEBLOCKSIZE;
-	res = sceFiosIOFilterAdd(0, sceFiosIOFilterPsarcDearchiver, &g_PsarcContext);
-	if (res < 0)
-		return res;
+	psarc_exists = file_exists("ux0:data/fahrenheit/textures.psarc");
+	if (psarc_exists) {
+		sceClibMemset(&g_PsarcContext, 0, sizeof(SceFiosPsarcDearchiverContext));
+		g_PsarcContext.size = sizeof(SceFiosPsarcDearchiverContext);
+		g_PsarcContext.pWorkBuffer = memalign(64, PSARCCACHEBLOCKSIZE);
+		g_PsarcContext.workBufferSize = PSARCCACHEBLOCKSIZE;
+		res = sceFiosIOFilterAdd(0, sceFiosIOFilterPsarcDearchiver, &g_PsarcContext);
+		if (res < 0)
+			return res;
 	
-	res = sceFiosArchiveGetMountBufferSizeSync(NULL, "ux0:data/fahrenheit/textures.psarc", NULL);
-	if (res < 0)
-		return res;
+		res = sceFiosArchiveGetMountBufferSizeSync(NULL, "ux0:data/fahrenheit/textures.psarc", NULL);
+		if (res < 0)
+			return res;
 
-	g_MountBuffer.length = res;
-	g_MountBuffer.pPtr = malloc(res);
+		g_MountBuffer.length = res;
+		g_MountBuffer.pPtr = malloc(res);
 	
-	res = sceFiosArchiveMountSync(NULL, &g_TexturesHandle, "ux0:data/fahrenheit/textures.psarc", "/", g_MountBuffer, NULL);
-	if (res < 0)
-		return res;
+		res = sceFiosArchiveMountSync(NULL, &g_TexturesHandle, "ux0:data/fahrenheit/textures.psarc", "/", g_MountBuffer, NULL);
+		if (res < 0)
+			return res;
+	}
 	
 	g_RamCacheWorkBuffer = memalign(8, RAMCACHEBLOCKNUM * RAMCACHEBLOCKSIZE);
 	if (!g_RamCacheWorkBuffer)
@@ -84,7 +89,7 @@ int fios_init(void) {
 	g_RamCacheContext.pWorkBuffer = g_RamCacheWorkBuffer;
 	g_RamCacheContext.workBufferSize = RAMCACHEBLOCKNUM * RAMCACHEBLOCKSIZE;
 	g_RamCacheContext.blockSize = RAMCACHEBLOCKSIZE;
-	res = sceFiosIOFilterAdd(1, sceFiosIOFilterCache, &g_RamCacheContext);
+	res = sceFiosIOFilterAdd(psarc_exists ? 1 : 0, sceFiosIOFilterCache, &g_RamCacheContext);
 	if (res < 0)
 		return res;
 

@@ -55,6 +55,7 @@ so_hook display2d_hook, initvfs_hook;
 
 extern const char *obb_file_names[];
 extern uint32_t obb_files_num;
+extern uint8_t psarc_exists;
 
 uint32_t *frame_buf;
 volatile uint8_t is_extracting = 0;
@@ -176,6 +177,9 @@ void extract_file(const char *fname) {
 	printf("Extraction done!\n");
 }
 
+#define MAX_TEXTURES_PER_FOLDER 200 // To reduce overhead caused by file indexing on the I/O controller
+int tex_idx = 0;
+int tex_blk_idx = 0;
 int extracted = 0;
 void extract_obbs() {
 	if (!extracted) {
@@ -186,12 +190,19 @@ void extract_obbs() {
 			return;
 		skip_extract = 1;
 		is_extracting = 1;
+		psarc_exists = 0;
 		printf("Extracting %u files from the obb files...\n", obb_files_num);
 		for (int i = 0; i < obb_files_num; i++) {
 			vglSwapBuffers(GL_FALSE);
 			curr_extract_idx = i;
 			printf("Extracting %s...\n", obb_file_names[i]);
-			sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[i]);
+			if (!strncmp(obb_file_names[i], "textures/", 9)) {
+				sprintf(outname, "ux0:data/fahrenheit/texblk%d/%s", tex_blk_idx, obb_file_names[i]);
+				tex_idx = (tex_idx + 1) % MAX_TEXTURES_PER_FOLDER;
+				if (!tex_idx)
+					tex_blk_idx++;
+			} else
+				sprintf(outname, "ux0:data/fahrenheit/%s", obb_file_names[i]);
 			if (file_exists(outname))
 				continue;
 			recursive_mkdir(outname);
@@ -703,7 +714,7 @@ size_t fread_hook(void *p, size_t size, size_t num, FILE *f) {
 FILE *fopen_hook(char *fname, char *mode) {
 	FILE *f;
 	char real_fname[256];
-	if (!strncmp(fname, "textures/", 9)) {
+	if (psarc_exists && !strncmp(fname, "textures/", 9)) {
 		sprintf(real_fname, "%c%s", '/', fname);
 		if (sceFiosFHOpenSync(NULL, &f, real_fname, NULL)) {
 			printf("Textures not found inside the PSARC!!! %s\n", fname);
