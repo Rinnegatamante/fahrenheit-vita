@@ -3821,6 +3821,5 @@ const char *obb_file_names[] = {
 	"lightingpervertex.vert",
 	"fog.glsl",
 	"resources/it.lproj/aslcore.json",
-	
 };
 uint32_t obb_files_num = sizeof(obb_file_names) / sizeof(*obb_file_names);

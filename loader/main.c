@@ -129,6 +129,7 @@ void recursive_mkdir(char *dir) {
 }
 
 uint8_t ps2_mode = 1;
+uint8_t force_30fps = 0;
 
 extern const char *BIONIC_ctype_;
 extern const short *BIONIC_tolower_tab_;
@@ -196,7 +197,7 @@ void extract_obbs() {
 			vglSwapBuffers(GL_FALSE);
 			curr_extract_idx = i;
 			printf("Extracting %s...\n", obb_file_names[i]);
-			if (!strncmp(obb_file_names[i], "textures/", 9)) {
+			if (!strncmp(obb_file_names[i], "textures/", 9) && !strstr(obb_file_names[i], ".txt")) {
 				sprintf(outname, "ux0:data/fahrenheit/texblk%d/%s", tex_blk_idx, obb_file_names[i]);
 				tex_idx = (tex_idx + 1) % MAX_TEXTURES_PER_FOLDER;
 				if (!tex_idx)
@@ -1051,6 +1052,12 @@ off_t sceLibcBridge_ftello(FILE *stream) {
 	return (off_t)sceLibcBridge_ftell(stream);
 }
 
+int SDL_GL_SetSwapInterval_fake(int interval) {
+	if (force_30fps)
+		return SDL_GL_SetSwapInterval(2);
+	return SDL_GL_SetSwapInterval(1);
+}
+
 static so_default_dynlib default_dynlib[] = {
 	{ "opendir", (uintptr_t)&opendir_fake },
 	{ "readdir", (uintptr_t)&readdir_fake },
@@ -1457,7 +1464,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "SDL_GetWindowTitle", (uintptr_t)&SDL_GetWindowTitle },
 	{ "SDL_SetWindowTitle", (uintptr_t)&SDL_SetWindowTitle },
 	{ "SDL_GetWindowPosition", (uintptr_t)&SDL_GetWindowPosition },
-	{ "SDL_GL_SetSwapInterval", (uintptr_t)&SDL_GL_SetSwapInterval },
+	{ "SDL_GL_SetSwapInterval", (uintptr_t)&SDL_GL_SetSwapInterval_fake },
 	{ "SDL_IsGameController", (uintptr_t)&SDL_IsGameController },
 	{ "SDL_JoystickGetDeviceGUID", (uintptr_t)&SDL_JoystickGetDeviceGUID },
 	{ "SDL_GameControllerNameForIndex", (uintptr_t)&SDL_GameControllerNameForIndex },
