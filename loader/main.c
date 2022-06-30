@@ -681,55 +681,69 @@ int fstat_hook(int fd, void *statbuf) {
 }
 
 int fseek_hook(FILE *f, int dist, int off) {
-	if (f > 0x81000000)
-		return sceLibcBridge_fseek(f, dist, off);
-	
 	sceFiosFHSeek(f, dist, off);
 	return 0;
 }
 
 long ftell_hook(FILE *f) {
-	if (f > 0x81000000)
-		return sceLibcBridge_ftell(f);
-	
 	return sceFiosFHTell(f);
 }
 
 void fclose_hook(FILE *f) {
-	if (f > 0x81000000) {
-		sceLibcBridge_fclose(f);
-		return;
-	}
-
 	sceFiosFHCloseSync(NULL, f);
 }
 
 size_t fread_hook(void *p, size_t size, size_t num, FILE *f) {
-	if (f > 0x81000000)
-		return sceLibcBridge_fread(p, size, num, f);
+	int nbytes = sceFiosFHReadSync(NULL, f, p, size * num);
+	return nbytes / size;
+}
 
-	sceFiosFHReadSync(NULL, f, p, size * num);
-	return num;
+size_t fwrite_hook(void *p, size_t size, size_t num, FILE *f) {
+	int nbytes = sceFiosFHWriteSync(NULL, f, p, size * num);
+	return nbytes / size;
 }
 
 FILE *fopen_hook(char *fname, char *mode) {
+	int r;
 	FILE *f;
 	char real_fname[256];
 	if (psarc_exists && !strncmp(fname, "textures/", 9)) {
 		sprintf(real_fname, "%c%s", '/', fname);
-		if (sceFiosFHOpenSync(NULL, &f, real_fname, NULL)) {
-			printf("Textures not found inside the PSARC!!! %s\n", fname);
+		r = sceFiosFHOpenSync(NULL, &f, real_fname, NULL);
+		if (r) {
+			printf("Texture not found inside the PSARC!!! %s\n", fname);
 			return NULL;
 		}
 	} else if (strncmp(fname, "ux0:", 4)) {
+		SceFiosOpenParams parms;
+		if (mode[0] == 'r')
+			parms.mode = SCE_FIOS_O_RDONLY;
+		else if (mode[0] == 'w') {
+			printf("fopen with %s\n", mode);
+			parms.mode = SCE_FIOS_O_WRONLY;
+		} else {
+			printf("fopen with %s\n", mode);
+		}
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
-		f = sceLibcBridge_fopen(real_fname, mode);
+		//printf("opening %s\n", real_fname);
+		r = sceFiosFHOpenSync(NULL, &f, real_fname, &parms);
 		//if (!f && !skip_extract)
 		//	extract_file(fname);
 	} else {
-		f = sceLibcBridge_fopen(fname, mode);
+		
+		SceFiosOpenParams parms;
+		if (mode[0] == 'r')
+			parms.mode = SCE_FIOS_O_RDONLY;
+		else if (mode[0] == 'w') {
+			printf("fopen with %s\n", mode);
+			parms.mode = SCE_FIOS_O_WRONLY;
+		} else {
+			printf("fopen with %s\n", mode);
+		}
+		//printf("opening %s\n", fname);
+		r = sceFiosFHOpenSync(NULL, &f, fname, &parms);
 	}
-	return f;
+	return r ? NULL : f;
 }
 
 int mkdir_hook(const char *pathname, mode_t mode) {
@@ -1048,8 +1062,9 @@ struct android_dirent *readdir_fake(android_DIR *dirp) {
 	return &dirp->dir;
 }
 
-off_t sceLibcBridge_ftello(FILE *stream) {
-	return (off_t)sceLibcBridge_ftell(stream);
+off_t ftello_hook(FILE *stream) {
+	printf("ftello on %x\n", stream);
+	return (off_t)sceFiosFHTell(stream);
 }
 
 int SDL_GL_SetSwapInterval_fake(int interval) {
@@ -1172,9 +1187,9 @@ static so_default_dynlib default_dynlib[] = {
 	{ "fseek", (uintptr_t)&fseek_hook },
 	{ "fstat", (uintptr_t)&fstat_hook },
 	{ "ftell", (uintptr_t)&ftell_hook },
-	{ "ftello", (uintptr_t)&sceLibcBridge_ftello },
+	{ "ftello", (uintptr_t)&ftello_hook },
 	// { "ftruncate", (uintptr_t)&ftruncate },
-	{ "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
+	{ "fwrite", (uintptr_t)&fwrite_hook },
 	{ "getc", (uintptr_t)&sceLibcBridge_getc },
 	{ "getpid", (uintptr_t)&ret0 },
 	{ "getcwd", (uintptr_t)&getcwd_hook },

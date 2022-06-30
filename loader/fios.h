@@ -18,6 +18,17 @@
 #define SCE_FIOS_PARAMS_INITIALIZER { 0, sizeof(SceFiosParams), 0, 0, 2, 1, 0, 0, 256 * 1024, 2, 0, 0, 0, 0, 0, SCE_FIOS_BUFFER_INITIALIZER, SCE_FIOS_BUFFER_INITIALIZER, SCE_FIOS_BUFFER_INITIALIZER, SCE_FIOS_BUFFER_INITIALIZER, NULL, NULL, NULL, { 66, 189, 66 }, { 0x40000, 0, 0x40000}, { 8 * 1024, 16 * 1024, 8 * 1024}}
 #define SCE_FIOS_RAM_CACHE_CONTEXT_INITIALIZER { sizeof(SceFiosRamCacheContext), 0, (64 * 1024), NULL, NULL, 0, {0, 0, 0} }
 
+typedef int32_t SceFiosFH;
+
+enum {
+	SCE_FIOS_O_RDONLY = 0x0001,                                   //!< Read-only
+	SCE_FIOS_O_WRONLY = 0x0002,                                   //!< Write-only
+	SCE_FIOS_O_RDWR   = (SCE_FIOS_O_RDONLY | SCE_FIOS_O_WRONLY),  //!< Read/Write
+	SCE_FIOS_O_APPEND = 0x0004,                                   //!< Append
+	SCE_FIOS_O_CREAT  = 0x0008,                                   //!< Create
+	SCE_FIOS_O_TRUNC  = 0x0010,                                   //!< Truncate
+};
+
 typedef struct SceFiosPsarcDearchiverContext
 {
 	size_t size;
@@ -48,6 +59,14 @@ typedef struct SceFiosBuffer {
 	void *pPtr;
 	size_t length;
 } SceFiosBuffer;
+
+typedef struct SceFiosOpenParams {
+    uint16_t mode;
+    uint16_t unk;
+    uint32_t reserved;
+    void *buffer;
+	size_t buf_len;
+} SceFiosOpenParams;
 
 typedef struct SceFiosParams {
 	uint32_t initialized : 1;
@@ -83,7 +102,13 @@ void sceFiosTerminate();
 int sceFiosIOFilterAdd(int index, void *pFilterCallback, void *pFilterContext);
 void sceFiosIOFilterCache();
 void sceFiosIOFilterPsarcDearchiver();
-int64_t sceFiosFHReadSync(void *attr, int32_t fh, void *pBuf, int64_t length);
+
+int sceFiosFHOpenSync(const void *attr, SceFiosFH *fh, const char *path, const void *params);
+int64_t sceFiosFHReadSync(void *attr, SceFiosFH fh, void *pBuf, int64_t length);
+int64_t sceFiosFHWriteSync(void *attr, SceFiosFH fh, const void *pBuf, int64_t length);
+int sceFiosFHCloseSync(const void *attr, SceFiosFH fh);
+int64_t sceFiosFHSeek(SceFiosFH fh, int64_t offset, int whence);
+int64_t sceFiosFHTell(SceFiosFH fh);
 
 int fios_init(void);
 
