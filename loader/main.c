@@ -1355,6 +1355,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "wmemset", (uintptr_t)&wmemset },
 	{ "write", (uintptr_t)&write },
 	// { "writev", (uintptr_t)&writev },
+	{ "SDL_WarpMouseInWindow", (uintptr_t)&SDL_WarpMouseInWindow },
 	{ "SDL_AndroidGetExternalStoragePath", (uintptr_t)&SDL_AndroidGetExternalStoragePath },
 	{ "SDL_AndroidGetInternalStoragePath", (uintptr_t)&SDL_AndroidGetInternalStoragePath },
 	{ "SDL_Android_Init", (uintptr_t)&ret1 },

@@ -124,8 +124,8 @@ static float c_zerof = 0.0;
 static float c_onef = 1.0;
 
 // Shader variables
-float3 normal;
-float4 vertexPositionInEye;
+static float3 normal;
+static float4 vertexPositionInEye;
 
 // Functions
 float4 calcLighting(float4 inputColor, float4 clr);
