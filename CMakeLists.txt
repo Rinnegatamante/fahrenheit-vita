@@ -23,7 +23,6 @@ add_executable(Fahrenheit
   loader/so_util.c
   loader/ogg_patch.c
   loader/vorbis_patch.c
-  loader/obb_files.c
   loader/sha1.c
   loader/ctype_patch.c
   loader/fnmatch.c
