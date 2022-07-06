@@ -78,7 +78,7 @@ int _newlib_heap_size_user = MEMORY_NEWLIB_MB * 1024 * 1024;
 
 unsigned int _pthread_stack_default_user = 1 * 1024 * 1024;
 
-so_module fahrenheit_mod, stdcpp_mod, iconv_mod, obbvfs_mod;
+so_module fahrenheit_mod, stdcpp_mod, iconv_mod;
 
 void *__wrap_memcpy(void *dest, const void *src, size_t n) {
 	return sceClibMemcpy(dest, src, n);
@@ -116,6 +116,7 @@ int debugPrintf(char *text, ...) {
 }
 
 int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
+#ifdef DEBUG
 	va_list list;
 	static char string[0x8000];
 
@@ -124,11 +125,12 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
 	va_end(list);
 
 	dlog("[LOG] %s: %s\n", tag, string);
-
+#endif
 	return 0;
 }
 
 int __android_log_write(int prio, const char *tag, const char *fmt, ...) {
+#ifdef DEBUG
 	va_list list;
 	static char string[0x8000];
 
@@ -137,17 +139,19 @@ int __android_log_write(int prio, const char *tag, const char *fmt, ...) {
 	va_end(list);
 
 	dlog("[LOGW] %s: %s\n", tag, string);
-
+#endif
 	return 0;
 }
 
 int __android_log_vprint(int prio, const char *tag, const char *fmt, va_list list) {
+#ifdef DEBUG
 	static char string[0x8000];
 
 	vsprintf(string, fmt, list);
 	va_end(list);
 
 	dlog("[LOGV] %s: %s\n", tag, string);
+#endif
 	return 0;
 }
 
