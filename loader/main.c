@@ -1593,12 +1593,19 @@ int main(int argc, char *argv[]) {
 	//SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
 	//sceKernelStartThread(crasher_thread, 0, NULL);	
 	//sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
-	
+
 	SceAppUtilInitParam init_param;
 	SceAppUtilBootParam boot_param;
 	memset(&init_param, 0, sizeof(SceAppUtilInitParam));
 	memset(&boot_param, 0, sizeof(SceAppUtilBootParam));
 	sceAppUtilInit(&init_param, &boot_param);
+	
+	SceAppUtilAppEventParam eventParam;
+	memset(&eventParam, 0, sizeof(SceAppUtilAppEventParam));
+	sceAppUtilReceiveAppEvent(&eventParam);
+	if (eventParam.type == 0x05) { // Game launched with 30 fps mode
+		force_30fps = 1;
+	}
 	
 	sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
 
@@ -1629,17 +1636,9 @@ int main(int argc, char *argv[]) {
 	so_resolve(&iconv_mod, default_dynlib, sizeof(default_dynlib), 0);
 	so_flush_caches(&iconv_mod);
 	so_initialize(&iconv_mod);
-	
-	printf("Loading libObbVfs\n");
-	if (so_file_load(&obbvfs_mod, DATA_PATH "/libObbVfs.so", LOAD_ADDRESS + 0x2000000) < 0)
-		fatal_error("Error could not load %s.", DATA_PATH "/libObbVfs.so");
-	so_relocate(&obbvfs_mod);
-	so_resolve(&obbvfs_mod, default_dynlib, sizeof(default_dynlib), 0);
-	so_flush_caches(&obbvfs_mod);
-	so_initialize(&obbvfs_mod);
 
 	printf("Loading libFahrenheit\n");
-	if (so_file_load(&fahrenheit_mod, SO_PATH, LOAD_ADDRESS + 0x3000000) < 0)
+	if (so_file_load(&fahrenheit_mod, SO_PATH, LOAD_ADDRESS + 0x2000000) < 0)
 		fatal_error("Error could not load %s.", SO_PATH);
 	so_relocate(&fahrenheit_mod);
 	so_resolve(&fahrenheit_mod, default_dynlib, sizeof(default_dynlib), 0);
