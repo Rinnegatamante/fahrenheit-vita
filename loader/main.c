@@ -448,6 +448,7 @@ void patch_game(void) {
 	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), rrMutexUnlock);
 	
 	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), ret0);
+	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi9lookupVfsERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"), ret0);
 	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), Display2D);
 }
 
@@ -1152,7 +1153,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "toupper", (uintptr_t)&toupper },
 	{ "towlower", (uintptr_t)&towlower },
 	{ "towupper", (uintptr_t)&towupper },
-	{ "ungetc", (uintptr_t)&ungetc },
+	{ "ungetc", (uintptr_t)&sceLibcBridge_ungetc },
 	{ "ungetwc", (uintptr_t)&ungetwc },
 	{ "usleep", (uintptr_t)&usleep },
 	{ "vfprintf", (uintptr_t)&vfprintf },

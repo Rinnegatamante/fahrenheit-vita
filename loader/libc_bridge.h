@@ -40,5 +40,6 @@ int sceLibcBridge_setjmp(jmp_buf env);
 void sceLibcBridge_longjmp(jmp_buf env, int val);
 
 int sceLibcBridge_getc(FILE *stream);
+int sceLibcBridge_ungetc(int c, FILE *stream);
 
 #endif
