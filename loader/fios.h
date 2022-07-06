@@ -84,6 +84,7 @@ int sceFiosIOFilterAdd(int index, void *pFilterCallback, void *pFilterContext);
 void sceFiosIOFilterCache();
 void sceFiosIOFilterPsarcDearchiver();
 int64_t sceFiosFHReadSync(void *attr, int32_t fh, void *pBuf, int64_t length);
+int64_t sceFiosFHSeek(int32_t fh, int64_t offset, int32_t whence);
 
 int fios_init(void);
 

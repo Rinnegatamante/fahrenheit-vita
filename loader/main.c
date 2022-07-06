@@ -48,6 +48,12 @@
 #include "libc_bridge.h"
 #include "fios.h"
 
+#ifdef DEBUG
+#define dlog printf
+#else
+#define dlog
+#endif
+
 so_hook display2d_hook;
 
 extern uint8_t psarc_exists;
@@ -117,7 +123,7 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
 	vsprintf(string, fmt, list);
 	va_end(list);
 
-	printf("[LOG] %s: %s\n", tag, string);
+	dlog("[LOG] %s: %s\n", tag, string);
 
 	return 0;
 }
@@ -130,7 +136,7 @@ int __android_log_write(int prio, const char *tag, const char *fmt, ...) {
 	vsprintf(string, fmt, list);
 	va_end(list);
 
-	printf("[LOGW] %s: %s\n", tag, string);
+	dlog("[LOGW] %s: %s\n", tag, string);
 
 	return 0;
 }
@@ -141,7 +147,7 @@ int __android_log_vprint(int prio, const char *tag, const char *fmt, va_list lis
 	vsprintf(string, fmt, list);
 	va_end(list);
 
-	printf("[LOGV] %s: %s\n", tag, string);
+	dlog("[LOGV] %s: %s\n", tag, string);
 	return 0;
 }
 
@@ -359,7 +365,7 @@ int GetEnv(void *vm, void **env, int r2) {
 }
 
 void QDT__KRN__I_OUTPUT__Push(char *msg) {
-	printf("%s\n", msg);
+	dlog("%s\n", msg);
 }
 
 int rrSemaphoreCreate(int *uid, int value) {
@@ -471,7 +477,7 @@ static int __stack_chk_guard_fake = 0x42424242;
 static FILE __sF_fake[0x1000][3];
 
 int stat_hook(const char *pathname, void *statbuf) {
-	//printf("stat(%s)\n", pathname);
+	//dlog("stat(%s)\n", pathname);
 	struct stat st;
 	int res;
 	if (!strstr(pathname, "ux0:")) {
@@ -540,7 +546,7 @@ FILE *fopen_hook(char *fname, char *mode) {
 	if (psarc_exists && !strncmp(fname, "textures/", 9)) {
 		sprintf(real_fname, "%c%s", '/', fname);
 		if (sceFiosFHOpenSync(NULL, &f, real_fname, NULL)) {
-			printf("Textures not found inside the PSARC!!! %s\n", fname);
+			dlog("Textures not found inside the PSARC!!! %s\n", fname);
 		} else {
 			return f;
 		}
@@ -555,7 +561,7 @@ FILE *fopen_hook(char *fname, char *mode) {
 }
 
 int mkdir_hook(const char *pathname, mode_t mode) {
-	//printf("mkdir(%s)\n", pathname);
+	//dlog("mkdir(%s)\n", pathname);
 	if (!strstr(pathname, "ux0:")) {
 		char real_fname[256];
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
@@ -605,7 +611,7 @@ int g_SDL_BufferGeometry_w;
 int g_SDL_BufferGeometry_h;
 
 void abort_hook() {
-	//printf("ABORT CALLED!!!\n");
+	//dlog("ABORT CALLED!!!\n");
 	uint8_t *p = NULL;
 	p[0] = 1;
 }
@@ -619,7 +625,7 @@ int chdir_hook(const char *path) {
 }
 
 int access_hook(const char *pathname, int mode) {
-	//printf("access %s\n", pathname);
+	//dlog("access %s\n", pathname);
 	int r;
 	if (!strstr(pathname, "ux0:")) {
 		char real_fname[256];
@@ -631,7 +637,7 @@ int access_hook(const char *pathname, int mode) {
 }
 
 void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, const GLint *length) {
-	//printf("Shader with count %d\n", count);
+	dlog("Shader with count %d\n", count);
 	
 	uint32_t sha1[5];
 	SHA1_CTX ctx;
@@ -657,15 +663,14 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 		sceLibcBridge_fwrite(tmp, 1, strlen(tmp), file);
 		sceLibcBridge_fclose(file);*/
 		
-		//printf("Auto translation attempt...\n");
+		//dlog("Auto translation attempt...\n");
 		char *tmp2 = vglMalloc(1 * 1024 * 1024);
 		//if (!tmp2)
-		//	printf("OUT OF MEM (2)!!!!\n");
+		//	dlog("OUT OF MEM (2)!!!!\n");
 		char *s = strstr(tmp, "#if defined GL_ES");
-		if (!s) printf("wtf\n");
 		size_t shaderSize;
 		if (strstr(tmp, "u_modelViewProjectionMatrix")) { // Vertex shader
-			//printf("Vertex shader detected\n");
+			//dlog("Vertex shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/vert.cg");
@@ -677,7 +682,7 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 			sceLibcBridge_fclose(file);
 			p[shaderSize] = 0;
 		} else { // Fragment Shader
-			//printf("Fragment shader detected\n");
+			//dlog("Fragment shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/frag.cg");
@@ -695,7 +700,7 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 		fwrite(tmp2, 1, strlen(tmp2), file);
 		fclose(file);
 		*/
-		//printf("Compiling resulting shader\n");
+		//dlog("Compiling resulting shader\n");
 		glShaderSource(shader, 1, &tmp2, NULL);
 		glCompileShader(shader);
 		vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
@@ -703,7 +708,7 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 		sceLibcBridge_fwrite(tmp2, 1, shaderSize, file);
 		sceLibcBridge_fclose(file);
 		vglFree(tmp2);
-		//printf("Auto translation completed!\n");
+		//dlog("Auto translation completed!\n");
 	} else {
 		size_t shaderSize;
 		void *shaderBuf;
@@ -763,20 +768,21 @@ static so_default_dynlib gl_hook[] = {
 static size_t gl_numhook = sizeof(gl_hook) / sizeof(*gl_hook);
 
 void *SDL_GL_GetProcAddress_fake(const char *symbol) {
-	printf("looking for symbol %s\n", symbol);
+	dlog("looking for symbol %s\n", symbol);
 	for (size_t i = 0; i < gl_numhook; ++i) {
 		if (!strcmp(symbol, gl_hook[i].symbol)) {
 			return (void *)gl_hook[i].func;
 		}
 	}
 	void *r = vglGetProcAddress(symbol);
-	if (!r)
-		printf("Cannot find symbol %s\n", symbol);
+	if (!r) {
+		dlog("Cannot find symbol %s\n", symbol);
+	}
 	return r;
 }
 
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
-	//printf("readlink(%s)\n", pathname);
+	//dlog("readlink(%s)\n", pathname);
 	strncpy(buf, "ux0:data/fahrenheit/libFahrenheit.so", bufsiz - 1);
 	return strlen(buf);
 }
@@ -818,7 +824,7 @@ int closedir_fake(android_DIR *dirp) {
 }
 
 android_DIR *opendir_fake(const char *dirname) {
-	//printf("opendir(%s)\n", dirname);
+	//dlog("opendir(%s)\n", dirname);
 	SceUID uid;
 	if (!strstr(dirname, "ux0:")) {
 		char real_fname[256];
@@ -1301,7 +1307,7 @@ static so_default_dynlib default_dynlib[] = {
 static size_t numhooks = sizeof(default_dynlib) / sizeof(*default_dynlib);
 
 void *dlsym_hook( void *handle, const char *symbol) {
-	printf("Searching for %s...\n", symbol);
+	dlog("Searching for %s...\n", symbol);
 	
 	for (size_t i = 0; i < numhooks; i++) {
 		if (!strcmp(symbol, default_dynlib[i].symbol)) {
@@ -1309,7 +1315,7 @@ void *dlsym_hook( void *handle, const char *symbol) {
 		}
 	}
 	
-	printf("Not Found!\n");
+	dlog("Not Found!\n");
 	return NULL;
 }
 
@@ -1341,7 +1347,7 @@ static NameToMethodID name_to_method_ids[] = {
 };
 
 int GetMethodID(void *env, void *class, const char *name, const char *sig) {
-	//printf("GetMethodID: %s\n", name);
+	//dlog("GetMethodID: %s\n", name);
 
 	for (int i = 0; i < sizeof(name_to_method_ids) / sizeof(NameToMethodID); i++) {
 		if (strcmp(name, name_to_method_ids[i].name) == 0) {
@@ -1353,7 +1359,7 @@ int GetMethodID(void *env, void *class, const char *name, const char *sig) {
 }
 
 int GetStaticMethodID(void *env, void *class, const char *name, const char *sig) {
-	//printf("GetStaticMethodID: %s\n", name);
+	//dlog("GetStaticMethodID: %s\n", name);
 	
 	for (int i = 0; i < sizeof(name_to_method_ids) / sizeof(NameToMethodID); i++) {
 		if (strcmp(name, name_to_method_ids[i].name) == 0)
@@ -1539,8 +1545,9 @@ float CallStaticFloatMethodV(void *env, void *obj, int methodID, uintptr_t *args
 	case GET_SCREEN_HEIGHT_INCH:
 		return 544.0f / 200.0f;
 	default:
-		if (methodID != UNKNOWN)
-			printf("CallStaticDoubleMethodV(%d)\n", methodID);
+		if (methodID != UNKNOWN) {
+			dlog("CallStaticDoubleMethodV(%d)\n", methodID);
+		}
 		return 0;
 	}
 }
