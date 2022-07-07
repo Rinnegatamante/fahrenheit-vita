@@ -5,6 +5,7 @@
 This is a wrapper/port of <b>Fahrenheit: Indigo Prophecy</b> for the *PS Vita*.
 
 The port works by loading the official Android ARMv7 executables in memory, resolving its imports with native functions and patching it in order to properly run.
+By doing so, it's basically as if we emulate a minimalist Android environment in which we run natively the executable as is.
 
 ## Changelog
 
