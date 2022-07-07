@@ -101,3 +101,4 @@ cmake .. && make
 - TheFloW for the original .so loader, the unobb application and for improvements to the port.
 - CatoTheYounger for extensively testing the homebrew.
 - Brandonheat8 for the Livearea assets.
+- Northfear for the SDL2 fork with vitaGL as backend.
