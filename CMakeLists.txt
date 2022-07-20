@@ -14,7 +14,7 @@ set(VITA_APP_NAME "Fahrenheit")
 set(VITA_TITLEID  "FAHRENEIT")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wl,-q,--wrap,memcpy,--wrap,memmove,--wrap,memset -Wall -O3 -mfloat-abi=softfp")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wl,-q,--wrap,memcpy,--wrap,memmove,--wrap,memset,--allow-multiple-definition -Wall -O3 -mfloat-abi=softfp")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++11 -Wno-write-strings")
 
 add_executable(Fahrenheit
@@ -31,8 +31,6 @@ add_executable(Fahrenheit
 
 target_link_libraries(Fahrenheit
   -Wl,--whole-archive pthread -Wl,--no-whole-archive
-  SDL2_mixer
-  SDL2_image
   SDL2
   z
   m
@@ -40,17 +38,13 @@ target_link_libraries(Fahrenheit
   opensles
   sndfile
   vorbis
-  vorbisenc
-  vorbisfile
   ogg
-  FLAC
   openal
   imgui
   vitaGL
   vitashark
   SceShaccCgExt
   mathneon
-  mpg123
   taihen_stub
   kubridge_stub
   SceAppMgr_stub
