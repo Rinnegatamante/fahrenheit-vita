@@ -80,11 +80,18 @@ typedef struct SceFiosParams {
 int sceFiosInitialize(const SceFiosParams *params);
 void sceFiosTerminate();
 
-int sceFiosIOFilterAdd(int index, void *pFilterCallback, void *pFilterContext);
+int64_t sceFiosArchiveGetMountBufferSizeSync(const void *attr, const char *path, void *params);
+int sceFiosArchiveMountSync(const void *attr, int32_t *fh, const char *path, const char *mount_point, SceFiosBuffer mount_buffer, void *params);
+
+int sceFiosIOFilterAdd(int index, void *callback, void *context);
 void sceFiosIOFilterCache();
 void sceFiosIOFilterPsarcDearchiver();
-int64_t sceFiosFHReadSync(void *attr, int32_t fh, void *pBuf, int64_t length);
+int sceFiosFHOpenSync(const void *attr, int32_t *fh, const char *path, const void *params);
+int64_t sceFiosFHReadSync(const void *attr, int32_t fh, void *buf, int64_t length);
 int64_t sceFiosFHSeek(int32_t fh, int64_t offset, int32_t whence);
+int64_t sceFiosFHTell(int32_t fh);
+int sceFiosIsValidHandle(int32_t handle);
+int sceFiosFileExistsSync(const void *pAttr, const char *path);
 
 int fios_init(void);
 

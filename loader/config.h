@@ -11,8 +11,7 @@
 
 #define DATA_PATH "ux0:data/fahrenheit"
 #define SO_PATH DATA_PATH "/" "libFahrenheit.so"
-#define OBB_PATH DATA_PATH "/" "main.obb"
-#define PATCH_PATH DATA_PATH "/" "patch.obb"
+#define PSARC_PATH DATA_PATH "/" "obb.psarc"
 
 #define SCREEN_W 960
 #define SCREEN_H 544
