@@ -16,8 +16,8 @@
 #include "so_util.h"
 
 #define MAX_PATH_LENGTH 256
-#define RAMCACHEBLOCKSIZE (128 * 1024)
 #define PSARCCACHEBLOCKSIZE (192 * 1024)
+#define RAMCACHEBLOCKSIZE (128 * 1024)
 #define RAMCACHEBLOCKNUM 512
 
 static int64_t g_OpStorage[SCE_FIOS_OP_STORAGE_SIZE(64, MAX_PATH_LENGTH) / sizeof(int64_t) + 1];
@@ -26,12 +26,11 @@ static int64_t g_FHStorage[SCE_FIOS_FH_STORAGE_SIZE(1024, MAX_PATH_LENGTH) / siz
 static int64_t g_DHStorage[SCE_FIOS_DH_STORAGE_SIZE(32, MAX_PATH_LENGTH) / sizeof(int64_t) + 1];
 
 static SceFiosRamCacheContext g_RamCacheContext = SCE_FIOS_RAM_CACHE_CONTEXT_INITIALIZER;
-static SceFiosPsarcDearchiverContext g_PsarcContext;
 static char *g_RamCacheWorkBuffer;
-static int32_t g_TexturesHandle;
-static SceFiosBuffer g_MountBuffer;
 
-uint8_t psarc_exists = 0;
+static SceFiosPsarcDearchiverContext g_PsarcContext;
+static int32_t g_ObbHandle;
+static SceFiosBuffer g_MountBuffer;
 
 int fios_init(void) {
 	int res;
@@ -58,38 +57,35 @@ int fios_init(void) {
 	res = sceFiosInitialize(&params);
 	if (res < 0)
 		return res;
-	
-	psarc_exists = file_exists("ux0:data/fahrenheit/textures.psarc");
-	if (psarc_exists) {
-		sceClibMemset(&g_PsarcContext, 0, sizeof(SceFiosPsarcDearchiverContext));
-		g_PsarcContext.size = sizeof(SceFiosPsarcDearchiverContext);
-		g_PsarcContext.pWorkBuffer = memalign(64, PSARCCACHEBLOCKSIZE);
-		g_PsarcContext.workBufferSize = PSARCCACHEBLOCKSIZE;
-		res = sceFiosIOFilterAdd(0, sceFiosIOFilterPsarcDearchiver, &g_PsarcContext);
-		if (res < 0)
-			return res;
-	
-		res = sceFiosArchiveGetMountBufferSizeSync(NULL, "ux0:data/fahrenheit/textures.psarc", NULL);
-		if (res < 0)
-			return res;
 
-		g_MountBuffer.length = res;
-		g_MountBuffer.pPtr = malloc(res);
-	
-		res = sceFiosArchiveMountSync(NULL, &g_TexturesHandle, "ux0:data/fahrenheit/textures.psarc", "/", g_MountBuffer, NULL);
-		if (res < 0)
-			return res;
-	}
-	
+	memset(&g_PsarcContext, 0, sizeof(SceFiosPsarcDearchiverContext));
+	g_PsarcContext.size = sizeof(SceFiosPsarcDearchiverContext);
+	g_PsarcContext.pWorkBuffer = memalign(64, PSARCCACHEBLOCKSIZE);
+	g_PsarcContext.workBufferSize = PSARCCACHEBLOCKSIZE;
+	res = sceFiosIOFilterAdd(0, sceFiosIOFilterPsarcDearchiver, &g_PsarcContext);
+	if (res < 0)
+		return res;
+
 	g_RamCacheWorkBuffer = memalign(8, RAMCACHEBLOCKNUM * RAMCACHEBLOCKSIZE);
 	if (!g_RamCacheWorkBuffer)
 		return -1;
 
-	g_RamCacheContext.pPath = DATA_PATH;
+	g_RamCacheContext.pPath = PSARC_PATH;
 	g_RamCacheContext.pWorkBuffer = g_RamCacheWorkBuffer;
 	g_RamCacheContext.workBufferSize = RAMCACHEBLOCKNUM * RAMCACHEBLOCKSIZE;
 	g_RamCacheContext.blockSize = RAMCACHEBLOCKSIZE;
-	res = sceFiosIOFilterAdd(psarc_exists ? 1 : 0, sceFiosIOFilterCache, &g_RamCacheContext);
+	res = sceFiosIOFilterAdd(1, sceFiosIOFilterCache, &g_RamCacheContext);
+	if (res < 0)
+		return res;
+
+	res = sceFiosArchiveGetMountBufferSizeSync(NULL, PSARC_PATH, NULL);
+	if (res < 0)
+		return res;
+
+	g_MountBuffer.length = res;
+	g_MountBuffer.pPtr = malloc(res);
+
+	res = sceFiosArchiveMountSync(NULL, &g_ObbHandle, PSARC_PATH, "/psarc/", g_MountBuffer, NULL);
 	if (res < 0)
 		return res;
 
@@ -99,4 +95,5 @@ int fios_init(void) {
 void fios_terminate(void) {
 	sceFiosTerminate();
 	free(g_RamCacheWorkBuffer);
+	sceFiosArchiveUnmountSync(NULL, g_ObbHandle);
 }

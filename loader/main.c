@@ -56,8 +56,6 @@
 
 so_hook display2d_hook;
 
-extern uint8_t psarc_exists;
-
 uint8_t ps2_mode = 1;
 uint8_t force_30fps = 0;
 
@@ -333,14 +331,14 @@ int pthread_cond_timedwait_relative_np_fake(pthread_cond_t **cnd, pthread_mutex_
 		if (pthread_cond_init_fake(cnd, NULL) < 0)
 			return -1;
 	}
-	
+
 	if (ts != NULL) {
 		struct timespec ct;
 		clock_gettime_hook(0, &ct);
 		ts->tv_sec += ct.tv_sec;
 		ts->tv_nsec += ct.tv_nsec;
 	}
-	
+
 	pthread_cond_timedwait(*cnd, *mtx, ts); // FIXME
 	return 0;
 }
@@ -437,29 +435,200 @@ void Display2D(void *this) {
 	SO_CONTINUE(int, display2d_hook, this);
 }
 
+int (* std__basic_string__init)(void *basic_string, const char *string, unsigned int size);
+
+char *from_basic_string(void *basic_string) {
+	if (*(char *)basic_string & 1)
+		return *(char **)(basic_string + 8);
+	else
+		return basic_string + 1;
+}
+
+int ASL__FsApi__Obb__Vfs__fopen(void *this, void *filename_basic_string, void *mode_basic_string) {
+	char *filename = from_basic_string(filename_basic_string);
+	char *mode = from_basic_string(mode_basic_string);
+
+	int f;
+	if (sceFiosFHOpenSync(NULL, &f, filename, NULL) < 0)
+		return 0;
+
+	return f;
+}
+
+int ASL__FsApi__Obb__Vfs__access(void *this, void *pathame_basic_string, int mode) {
+	return 0;
+}
+
+void ASL__FsApi__Obb__Vfs__nativeToVirtual(void *virtual_basic_string, void *this, void *native_basic_string) {
+	char *native = from_basic_string(native_basic_string);
+	char virtual[256];
+	snprintf(virtual, sizeof(virtual), "/psarc/%s", native);
+	std__basic_string__init(virtual_basic_string, virtual, strlen(virtual));
+}
+
+int ASL__FsApi__Obb__File__fgetc(uintptr_t *this) {
+	uint8_t ch;
+	if (sceFiosFHReadSync(NULL, this[1], &ch, sizeof(ch)) != sizeof(ch))
+		return EOF;
+	return ch;
+}
+
+int ASL__FsApi__Obb__File__ASL_getC(uintptr_t *this) {
+	return ASL__FsApi__Obb__File__fgetc(this);
+}
+
+int ASL__FsApi__Obb__File__ungetc(uintptr_t *this) {
+	return -1;
+}
+
+size_t ASL__FsApi__Obb__File__fread(uintptr_t *this, void *ptr, size_t size, size_t count) {
+	if (size == 0 || count == 0)
+		return 0;
+
+	int res = (int)sceFiosFHReadSync(NULL, this[1], ptr, size * count);
+	if (res <= 0) {
+		return 0;
+	}
+
+	return res / size;
+}
+
+int ASL__FsApi__Obb__File__fseek(uintptr_t *this, long offset, int origin) {
+	if (sceFiosFHSeek(this[1], offset, origin) < 0)
+		return -1;
+	return 0;
+}
+
+long ASL__FsApi__Obb__File__ftell(uintptr_t *this) {
+	long res = (long)sceFiosFHTell(this[1]);
+	if (res < 0)
+		return -1;
+	return res;
+}
+
+int ASL__FsApi__Obb__File__fclose(uintptr_t *this) {
+	sceFiosFHCloseSync(NULL, this[1]);
+	this[0] = 0xdeadbeef;
+	this[1] = 0xdeadbeef;
+	free(this);
+	return 0;
+}
+
+uintptr_t ASL__FsApi__Obb__Vfs_vtable[] = {
+	[0 ... 0x40] = 0x41414141,
+	[0x04/4] = (uintptr_t)ASL__FsApi__Obb__Vfs__fopen, // ASL::FsApi::Obb::Vfs::fopen
+	[0x0c/4] = (uintptr_t)ASL__FsApi__Obb__Vfs__access, // ASL::FsApi::Obb::Vfs::access
+	[0x64/4] = (uintptr_t)ASL__FsApi__Obb__Vfs__nativeToVirtual, // ASL::FsApi::Obb::Vfs::nativeToVirtual
+};
+
+void *ASL__FsApi__Obb__Vfs_vptr = &ASL__FsApi__Obb__Vfs_vtable;
+
+uintptr_t ASL__FsApi__Obb__File_vtable[] = {
+	[0 ... 0x40] = 0x41414141,
+
+	// [0x00/4] = ASL__FsApi__Obb__File__clearerr,
+	[0x04/4] = (uintptr_t)ASL__FsApi__Obb__File__fclose,
+	// [0x08/4] = ASL__FsApi__Obb__File__ASL_feof,
+	// [0x0c/4] = ASL__FsApi__Obb__File__ASL_ferror,
+	// [0x10/4] = ASL__FsApi__Obb__File__fflush,
+	[0x14/4] = (uintptr_t)ASL__FsApi__Obb__File__fgetc,
+	// [0x18/4] = ASL__FsApi__Obb__File__fgetpos,
+	// [0x1c/4] = ASL__FsApi__Obb__File__fgets,
+	// [0x20/4] = ASL__FsApi__Obb__File__fileno,
+	// [0x24/4] = ASL__FsApi__Obb__File__fputc,
+	// [0x28/4] = ASL__FsApi__Obb__File__fputs,
+	[0x2c/4] = (uintptr_t)ASL__FsApi__Obb__File__fread,
+	[0x30/4] = (uintptr_t)ASL__FsApi__Obb__File__fseek,
+	// [0x34/4] = ASL__FsApi__Obb__File__fseeko,
+	// [0x38/4] = ASL__FsApi__Obb__File__fsetpos,
+	[0x3c/4] = (uintptr_t)ASL__FsApi__Obb__File__ftell,
+	// [0x40/4] = ASL__FsApi__Obb__File__fello,
+	// [0x44/4] = ASL__FsApi__Obb__File__fwrite,
+	[0x48/4] = (uintptr_t)ASL__FsApi__Obb__File__ASL_getC,
+	// [0x4c/4] = ASL__FsApi__Obb__File__ASL_putC,
+	// [0x50/4] = ASL__FsApi__Obb__File__rewind,
+	// [0x54/4] = ASL__FsApi__Obb__File__setbuf,
+	// [0x58/4] = ASL__FsApi__Obb__File__setbuffer,
+	// [0x5c/4] = ASL__FsApi__Obb__File__setlinebuf,
+	// [0x60/4] = ASL__FsApi__Obb__File__setvbuf,
+	[0x64/4] = (uintptr_t)ASL__FsApi__Obb__File__ungetc,
+	// [0x68/4] = ASL__FsApi__Obb__File__close,
+	// [0x6c/4] = ASL__FsApi__Obb__File__dup,
+	// [0x70/4] = ASL__FsApi__Obb__File__dup2,
+	// [0x74/4] = ASL__FsApi__Obb__File__fchdir,
+	// [0x78/4] = ASL__FsApi__Obb__File__fchown,
+	// [0x7c/4] = ASL__FsApi__Obb__File__fdatasync,
+	// [0x80/4] = ASL__FsApi__Obb__File__flock,
+	// [0x84/4] = ASL__FsApi__Obb__File__fsync,
+	// [0x88/4] = ASL__FsApi__Obb__File__ftruncate64,
+	// [0x8c/4] = ASL__FsApi__Obb__File__ftruncate,
+	// [0x90/4] = ASL__FsApi__Obb__File__vfprintf,
+	// [0x94/4] = ASL__FsApi__Obb__File__vfscanf,
+	// [0x98/4] = ASL__FsApi__Obb__File__lseek64,
+	// [0x9c/4] = ASL__FsApi__Obb__File__lseek,
+	// [0xa0/4] = ASL__FsApi__Obb__File__pread64,
+	// [0xa4/4] = ASL__FsApi__Obb__File__pread,
+	// [0xa8/4] = ASL__FsApi__Obb__File__pwrite64,
+	// [0xac/4] = ASL__FsApi__Obb__File__pwrite,
+	// [0xb0/4] = ASL__FsApi__Obb__File__read,
+	// [0xb4/4] = ASL__FsApi__Obb__File__write,
+	// [0xb8/4] = ASL__FsApi__Obb__File__fstat,
+	// [0xbc/4] = ASL__FsApi__Obb__File__fstat64,
+};
+
+void *ASL__FsApi__lookupVfs(void *filename_basic_string) {
+	char *filename = from_basic_string(filename_basic_string);
+	char filename_with_slash[256];
+	snprintf(filename_with_slash, sizeof(filename_with_slash), "/psarc/%s", filename);
+	if (sceFiosFileExistsSync(NULL, filename_with_slash))
+		return &ASL__FsApi__Obb__Vfs_vptr;
+	return NULL;
+}
+
+void ASL__FsApi__lookupFile(uintptr_t *obbfile, int fd) {
+	obbfile[0] = 0;
+	obbfile[1] = 0;
+	if (sceFiosIsValidHandle(fd)) {
+		uintptr_t *file = malloc(8);
+		file[0] = (uintptr_t)ASL__FsApi__Obb__File_vtable;
+		file[1] = fd;
+		obbfile[0] = file;
+		obbfile[1] = 0;
+	}
+}
+
+void GetHomeDir(char *dir) {
+	*dir = '\0';
+}
+
 void patch_game(void) {
 	if (ps2_mode)
-		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), ret0);
+		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), (uintptr_t)&ret0);
 
 	//hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3KRN8I_OUTPUT4PushEPKcb"), QDT__KRN__I_OUTPUT__Push);
 
-	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset16"), sceClibMemset);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset32"), sceClibMemset);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset16"), (uintptr_t)&sceClibMemset);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset32"), (uintptr_t)&sceClibMemset);
 
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreCreate"), rrSemaphoreCreate);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDestroy"), rrSemaphoreDestroy);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDecrementOrWait"), rrSemaphoreDecrementOrWait);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreIncrement"), rrSemaphoreIncrement);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreCreate"), (uintptr_t)&rrSemaphoreCreate);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDestroy"), (uintptr_t)&rrSemaphoreDestroy);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDecrementOrWait"), (uintptr_t)&rrSemaphoreDecrementOrWait);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreIncrement"), (uintptr_t)&rrSemaphoreIncrement);
 
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexCreate"), rrMutexCreate);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexDestroy"), rrMutexDestroy);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLock"), rrMutexLock);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLockTimeout"), rrMutexLockTimeout);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), rrMutexUnlock);
-	
-	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), ret0);
-	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi9lookupVfsERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"), ret0);
-	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), Display2D);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexCreate"), (uintptr_t)&rrMutexCreate);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexDestroy"), (uintptr_t)&rrMutexDestroy);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLock"), (uintptr_t)&rrMutexLock);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLockTimeout"), (uintptr_t)&rrMutexLockTimeout);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), (uintptr_t)&rrMutexUnlock);
+
+	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), (uintptr_t)&ret0);
+	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), (uintptr_t)&Display2D);
+
+	hook_addr(so_symbol(&fahrenheit_mod, "_Z10GetHomeDirPc"), (uintptr_t)&GetHomeDir);
+
+	std__basic_string__init = (void *)so_symbol(&fahrenheit_mod, "_ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEE6__initEPKcj");
+	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi9lookupVfsERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"), (uintptr_t)&ASL__FsApi__lookupVfs);
+	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi10lookupFileEP7__sFILE"), (uintptr_t)&ASL__FsApi__lookupFile);
 }
 
 extern void *__aeabi_atexit;
@@ -484,7 +653,7 @@ int stat_hook(const char *pathname, void *statbuf) {
 	//dlog("stat(%s)\n", pathname);
 	struct stat st;
 	int res;
-	if (!strstr(pathname, "ux0:")) {
+	if (strncmp(pathname, "ux0:", 4) != 0) {
 		char real_fname[256];
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
 		res = stat(real_fname, &st);
@@ -512,66 +681,39 @@ int fstat_hook(int fd, void *statbuf) {
 	return res;
 }
 
-int fseek_hook(FILE *f, int dist, int off) {
-	if (f > 0x81000000)
-		return sceLibcBridge_fseek(f, dist, off);
-	
-	sceFiosFHSeek(f, dist, off);
-	return 0;
-}
-
-long ftell_hook(FILE *f) {
-	if (f > 0x81000000)
-		return sceLibcBridge_ftell(f);
-	
-	return sceFiosFHTell(f);
-}
-
-void fclose_hook(FILE *f) {
-	if (f > 0x81000000) {
-		sceLibcBridge_fclose(f);
-		return;
+FILE *fopen_hook(char *filename, char *mode) {
+	if (strncmp(filename, "ux0:", 4) != 0) {
+		char real_fname[256];
+		sprintf(real_fname, "ux0:data/fahrenheit/%s", filename);
+		return fopen(real_fname, mode);
 	}
-
-	sceFiosFHCloseSync(NULL, f);
-}
-
-size_t fread_hook(void *p, size_t size, size_t num, FILE *f) {
-	if (f > 0x81000000)
-		return sceLibcBridge_fread(p, size, num, f);
-
-	sceFiosFHReadSync(NULL, f, p, size * num);
-	return num;
-}
-
-FILE *fopen_hook(char *fname, char *mode) {
-	FILE *f;
-	char real_fname[256];
-	if (psarc_exists && !strncmp(fname, "textures/", 9)) {
-		sprintf(real_fname, "%c%s", '/', fname);
-		if (sceFiosFHOpenSync(NULL, &f, real_fname, NULL)) {
-			dlog("Textures not found inside the PSARC!!! %s\n", fname);
-		} else {
-			return f;
-		}
-	}
-	if (strncmp(fname, "ux0:", 4)) {
-		sprintf(real_fname, "ux0:data/fahrenheit/%s", fname);
-		f = sceLibcBridge_fopen(real_fname, mode);
-	} else {
-		f = sceLibcBridge_fopen(fname, mode);
-	}
-	return f;
+	return fopen(filename, mode);
 }
 
 int mkdir_hook(const char *pathname, mode_t mode) {
 	//dlog("mkdir(%s)\n", pathname);
-	if (!strstr(pathname, "ux0:")) {
+	if (strncmp(pathname, "ux0:", 4) != 0) {
 		char real_fname[256];
 		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
 		return mkdir(real_fname, mode);
 	}
 	return mkdir(pathname, mode);
+}
+
+int access_hook(const char *pathname, int mode) {
+	//dlog("access %s\n", pathname);
+	int r;
+	if (strncmp(pathname, "ux0:", 4) != 0) {
+		char real_fname[256];
+		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
+		r = !file_exists(real_fname);
+	} else
+		r = !file_exists(pathname);
+	return r ? -1 : 0;
+}
+
+int chdir_hook(const char *path) {
+	return 0;
 }
 
 extern void *__cxa_guard_acquire;
@@ -624,28 +766,12 @@ int ret99() {
 	return 99;
 }
 
-int chdir_hook(const char *path) {
-	return 0;
-}
-
-int access_hook(const char *pathname, int mode) {
-	//dlog("access %s\n", pathname);
-	int r;
-	if (!strstr(pathname, "ux0:")) {
-		char real_fname[256];
-		sprintf(real_fname, "ux0:data/fahrenheit/%s", pathname);
-		r = !file_exists(real_fname);
-	} else
-		r = !file_exists(pathname);
-	return r ? -1 : 0;
-}
-
 void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, const GLint *length) {
 	dlog("Shader with count %d\n", count);
-	
+
 	uint32_t sha1[5];
 	SHA1_CTX ctx;
-	
+
 	sha1_init(&ctx);
 	if (count > 1) {
 		sha1_update(&ctx, string[1], length ? length[1] : strlen(string[1]));
@@ -653,20 +779,20 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 		sha1_update(&ctx, string[0], length ? length[0] : strlen(string[0]));
 	}
 	sha1_final(&ctx, (uint8_t *)sha1);
-	
+
 	char sha_name[64];
 	snprintf(sha_name, sizeof(sha_name), "%08x%08x%08x%08x%08x", sha1[0], sha1[1], sha1[2], sha1[3], sha1[4]);
 	char gxp_path[128], glsl_path[128];
 	snprintf(gxp_path, sizeof(gxp_path), "%s/%s.gxp", "ux0:data/fahrenheit/gxp", sha_name);
 
-	FILE *file = sceLibcBridge_fopen(gxp_path, "rb");
+	FILE *file = fopen(gxp_path, "rb");
 	if (!file) {
 		char *tmp = string[1];
 		/*snprintf(glsl_path, sizeof(glsl_path), "%s/%s.glsl", "ux0:data/fahrenheit/glsl", sha_name);
-		file = sceLibcBridge_fopen(glsl_path, "w");
-		sceLibcBridge_fwrite(tmp, 1, strlen(tmp), file);
-		sceLibcBridge_fclose(file);*/
-		
+		file = fopen(glsl_path, "w");
+		fwrite(tmp, 1, strlen(tmp), file);
+		fclose(file);*/
+
 		//dlog("Auto translation attempt...\n");
 		char *tmp2 = vglMalloc(1 * 1024 * 1024);
 		//if (!tmp2)
@@ -678,24 +804,24 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/vert.cg");
-			file = sceLibcBridge_fopen(glsl_path, "r");
-			sceLibcBridge_fseek(file, 0, SEEK_END);
-			shaderSize = sceLibcBridge_ftell(file);
-			sceLibcBridge_fseek(file, 0, SEEK_SET);
-			sceLibcBridge_fread(p, 1, shaderSize, file);
-			sceLibcBridge_fclose(file);
+			file = fopen(glsl_path, "r");
+			fseek(file, 0, SEEK_END);
+			shaderSize = ftell(file);
+			fseek(file, 0, SEEK_SET);
+			fread(p, 1, shaderSize, file);
+			fclose(file);
 			p[shaderSize] = 0;
 		} else { // Fragment Shader
 			//dlog("Fragment shader detected\n");
 			sceClibMemcpy(tmp2, tmp, s - tmp);
 			char *p = tmp2 + (s - tmp);
 			sprintf(glsl_path, "ux0:data/fahrenheit/frag.cg");
-			file = sceLibcBridge_fopen(glsl_path, "r");
-			sceLibcBridge_fseek(file, 0, SEEK_END);
-			shaderSize = sceLibcBridge_ftell(file);
-			sceLibcBridge_fseek(file, 0, SEEK_SET);
-			sceLibcBridge_fread(p, 1, shaderSize, file);
-			sceLibcBridge_fclose(file);
+			file = fopen(glsl_path, "r");
+			fseek(file, 0, SEEK_END);
+			shaderSize = ftell(file);
+			fseek(file, 0, SEEK_SET);
+			fread(p, 1, shaderSize, file);
+			fclose(file);
 			p[shaderSize] = 0;
 		}
 		/*
@@ -708,22 +834,22 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 		glShaderSource(shader, 1, &tmp2, NULL);
 		glCompileShader(shader);
 		vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
-		file = sceLibcBridge_fopen(gxp_path, "w+");
-		sceLibcBridge_fwrite(tmp2, 1, shaderSize, file);
-		sceLibcBridge_fclose(file);
+		file = fopen(gxp_path, "w+");
+		fwrite(tmp2, 1, shaderSize, file);
+		fclose(file);
 		vglFree(tmp2);
 		//dlog("Auto translation completed!\n");
 	} else {
 		size_t shaderSize;
 		void *shaderBuf;
 
-		sceLibcBridge_fseek(file, 0, SEEK_END);
-		shaderSize = sceLibcBridge_ftell(file);
-		sceLibcBridge_fseek(file, 0, SEEK_SET);
+		fseek(file, 0, SEEK_END);
+		shaderSize = ftell(file);
+		fseek(file, 0, SEEK_SET);
 
 		shaderBuf = vglMalloc(shaderSize);
-		sceLibcBridge_fread(shaderBuf, 1, shaderSize, file);
-		sceLibcBridge_fclose(file);
+		fread(shaderBuf, 1, shaderSize, file);
+		fclose(file);
 
 		glShaderBinary(1, &shader, 0, shaderBuf, shaderSize);
 
@@ -880,10 +1006,6 @@ struct android_dirent *readdir_fake(android_DIR *dirp) {
 	return &dirp->dir;
 }
 
-off_t sceLibcBridge_ftello(FILE *stream) {
-	return (off_t)sceLibcBridge_ftell(stream);
-}
-
 int SDL_GL_SetSwapInterval_fake(int interval) {
 	if (force_30fps)
 		return SDL_GL_SetSwapInterval(2);
@@ -980,34 +1102,34 @@ static so_default_dynlib default_dynlib[] = {
 	{ "exp2", (uintptr_t)&exp2 },
 	{ "expf", (uintptr_t)&expf },
 	{ "fabsf", (uintptr_t)&fabsf },
-	{ "fclose", (uintptr_t)&fclose_hook },
+	{ "fclose", (uintptr_t)&fclose },
 	{ "fcntl", (uintptr_t)&ret0 },
-	// { "fdopen", (uintptr_t)&fdopen },
-	{ "ferror", (uintptr_t)&sceLibcBridge_ferror },
-	// { "fflush", (uintptr_t)&fflush },
-	// { "fgets", (uintptr_t)&fgets },
+	{ "fdopen", (uintptr_t)&fdopen },
+	{ "ferror", (uintptr_t)&ferror },
+	{ "fflush", (uintptr_t)&fflush },
+	{ "fgets", (uintptr_t)&fgets },
 	{ "floor", (uintptr_t)&floor },
 	{ "floorf", (uintptr_t)&floorf },
 	{ "fmod", (uintptr_t)&fmod },
 	{ "fmodf", (uintptr_t)&fmodf },
 	{ "fnmatch", (uintptr_t)&fnmatch },
 	{ "fopen", (uintptr_t)&fopen_hook },
-	{ "fprintf", (uintptr_t)&sceLibcBridge_fprintf },
-	{ "fputc", (uintptr_t)&sceLibcBridge_fputc },
-	// { "fputwc", (uintptr_t)&fputwc },
-	// { "fputs", (uintptr_t)&fputs },
-	{ "fread", (uintptr_t)&fread_hook },
+	{ "fprintf", (uintptr_t)&fprintf },
+	{ "fputc", (uintptr_t)&fputc },
+	{ "fputwc", (uintptr_t)&fputwc },
+	{ "fputs", (uintptr_t)&fputs },
+	{ "fread", (uintptr_t)&fread },
 	{ "free", (uintptr_t)&vglFree },
 	{ "frexp", (uintptr_t)&frexp },
 	{ "frexpf", (uintptr_t)&frexpf },
-	// { "fscanf", (uintptr_t)&fscanf },
-	{ "fseek", (uintptr_t)&fseek_hook },
+	{ "fscanf", (uintptr_t)&fscanf },
+	{ "fseek", (uintptr_t)&fseek },
 	{ "fstat", (uintptr_t)&fstat_hook },
-	{ "ftell", (uintptr_t)&ftell_hook },
-	{ "ftello", (uintptr_t)&sceLibcBridge_ftello },
-	// { "ftruncate", (uintptr_t)&ftruncate },
-	{ "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
-	{ "getc", (uintptr_t)&sceLibcBridge_getc },
+	{ "ftell", (uintptr_t)&ftell },
+	{ "ftello", (uintptr_t)&ftello },
+	{ "ftruncate", (uintptr_t)&ftruncate },
+	{ "fwrite", (uintptr_t)&fwrite },
+	{ "getc", (uintptr_t)&getc },
 	{ "getpid", (uintptr_t)&ret0 },
 	{ "getcwd", (uintptr_t)&getcwd_hook },
 	{ "getenv", (uintptr_t)&ret0 },
@@ -1163,7 +1285,7 @@ static so_default_dynlib default_dynlib[] = {
 	{ "toupper", (uintptr_t)&toupper },
 	{ "towlower", (uintptr_t)&towlower },
 	{ "towupper", (uintptr_t)&towupper },
-	{ "ungetc", (uintptr_t)&sceLibcBridge_ungetc },
+	{ "ungetc", (uintptr_t)&ungetc },
 	{ "ungetwc", (uintptr_t)&ungetwc },
 	{ "usleep", (uintptr_t)&usleep },
 	{ "vfprintf", (uintptr_t)&vfprintf },
@@ -1312,13 +1434,13 @@ static size_t numhooks = sizeof(default_dynlib) / sizeof(*default_dynlib);
 
 void *dlsym_hook( void *handle, const char *symbol) {
 	dlog("Searching for %s...\n", symbol);
-	
+
 	for (size_t i = 0; i < numhooks; i++) {
 		if (!strcmp(symbol, default_dynlib[i].symbol)) {
 			return (void *)default_dynlib[i].func;
 		}
 	}
-	
+
 	dlog("Not Found!\n");
 	return NULL;
 }
@@ -1364,7 +1486,7 @@ int GetMethodID(void *env, void *class, const char *name, const char *sig) {
 
 int GetStaticMethodID(void *env, void *class, const char *name, const char *sig) {
 	//dlog("GetStaticMethodID: %s\n", name);
-	
+
 	for (int i = 0; i < sizeof(name_to_method_ids) / sizeof(NameToMethodID); i++) {
 		if (strcmp(name, name_to_method_ids[i].name) == 0)
 			return name_to_method_ids[i].id;
@@ -1405,7 +1527,7 @@ int CallStaticIntMethodV(void *env, void *obj, int methodID, uintptr_t *args) {
 			return 0;
 		}
 	default:
-		return 0;	
+		return 0;
 	}
 }
 
@@ -1441,7 +1563,7 @@ char *GetStringUTFChars(void *env, char *string, int *isCopy) {
 }
 
 size_t GetStringUTFLength(void *env, char *string) {
-	return strlen(string);	
+	return strlen(string);
 }
 
 int GetJavaVM(void *env, void **vm) {
@@ -1556,61 +1678,20 @@ float CallStaticFloatMethodV(void *env, void *obj, int methodID, uintptr_t *args
 	}
 }
 
-/*int crasher(unsigned int argc, void *argv) {
-	uint32_t *nullptr = NULL;
-	for (;;) {
-		SceCtrlData pad;
-		sceCtrlPeekBufferPositive(0, &pad, 1);
-		if (pad.buttons & SCE_CTRL_SELECT) *nullptr = 0;
-		sceKernelDelayThread(100);
-	}
-}*/
-
-/*void abort_handler(KuKernelAbortContext *ctx) {
-	printf("Crash Detected!!! (Abort Type: 0x%08X)\n", ctx->abortType);
-	printf("-----------------\n");
-	printf("PC: 0x%08X\n", ctx->pc);
-	printf("LR: 0x%08X\n", ctx->lr);
-	printf("SP: 0x%08X\n", ctx->sp);
-	printf("-----------------\n");
-	printf("REGISTERS:\n");
-	uint32_t *registers = (uint32_t *)ctx;
-	for (int i = 0; i < 13; i++) {
-		printf("R%d: 0x%08X\n", i, registers[i]);		
-	}
-	printf("-----------------\n");
-	printf("VFP REGISTERS:\n");
-	for (int i = 0; i < 32; i++) {
-		printf("D%d: 0x%016llX\n", i, ctx->vfpRegisters[i]);		
-	}
-	printf("-----------------\n");
-	printf("SPSR: 0x%08X\n", ctx->SPSR);
-	printf("FPSCR: 0x%08X\n", ctx->FPSCR);
-	printf("FPEXC: 0x%08X\n", ctx->FPEXC);
-	printf("FSR: 0x%08X\n", ctx->FSR);
-	printf("FAR: 0x%08X\n", *(&(ctx->FSR) + 4)); // Using ctx->FAR gives an error for some weird reason
-	sceKernelExitProcess(0);
-}*/
-
 int main(int argc, char *argv[]) {
-	//kuKernelRegisterAbortHandler(abort_handler, NULL);
-	//SceUID crasher_thread = sceKernelCreateThread("crasher", crasher, 0x40, 0x1000, 0, 0, NULL);
-	//sceKernelStartThread(crasher_thread, 0, NULL);	
-	//sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
-
 	SceAppUtilInitParam init_param;
 	SceAppUtilBootParam boot_param;
 	memset(&init_param, 0, sizeof(SceAppUtilInitParam));
 	memset(&boot_param, 0, sizeof(SceAppUtilBootParam));
 	sceAppUtilInit(&init_param, &boot_param);
-	
+
 	SceAppUtilAppEventParam eventParam;
 	memset(&eventParam, 0, sizeof(SceAppUtilAppEventParam));
 	sceAppUtilReceiveAppEvent(&eventParam);
 	if (eventParam.type == 0x05) { // Game launched with 30 fps mode
 		force_30fps = 1;
 	}
-	
+
 	sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
 
 	scePowerSetArmClockFrequency(444);
@@ -1629,10 +1710,12 @@ int main(int argc, char *argv[]) {
 		fatal_error("Error could not load %s.", DATA_PATH "/libc++_shared.so");
 	so_relocate(&stdcpp_mod);
 	so_resolve(&stdcpp_mod, default_dynlib, sizeof(default_dynlib), 0);
+	hook_addr(so_symbol(&stdcpp_mod, "__cxa_guard_acquire"), (uintptr_t)&__cxa_guard_acquire);
+	hook_addr(so_symbol(&stdcpp_mod, "__cxa_guard_release"), (uintptr_t)&__cxa_guard_release);
 
 	so_flush_caches(&stdcpp_mod);
 	so_initialize(&stdcpp_mod);
-	
+
 	printf("Loading iconv\n");
 	if (so_file_load(&iconv_mod, DATA_PATH "/libiconv.so", LOAD_ADDRESS + 0x1000000) < 0)
 		fatal_error("Error could not load %s.", DATA_PATH "/libiconv.so");
@@ -1652,14 +1735,14 @@ int main(int argc, char *argv[]) {
 	patch_vorbis();
 	so_flush_caches(&fahrenheit_mod);
 	so_initialize(&fahrenheit_mod);
-	
+
 	int r = fios_init();
 	if (r < 0)
 		fatal_error("Error could not initialize fios. (0x%08X)", r);
-	
+
 	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
 	//vglInitExtended(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X); // Debug (Has common dialog usable)
-	
+
 	memset(fake_vm, 'A', sizeof(fake_vm));
 	*(uintptr_t *)(fake_vm + 0x00) = (uintptr_t)fake_vm; // just point to itself...
 	*(uintptr_t *)(fake_vm + 0x10) = (uintptr_t)ret0;
@@ -1697,18 +1780,12 @@ int main(int argc, char *argv[]) {
 	*(uintptr_t *)(fake_env + 0x2A8) = (uintptr_t)ret0;
 	*(uintptr_t *)(fake_env + 0x36C) = (uintptr_t)GetJavaVM;
 	*(uintptr_t *)(fake_env + 0x374) = (uintptr_t)GetStringUTFRegion;
-	
+
 	// Disabling rearpad
 	SDL_setenv("VITA_DISABLE_TOUCH_BACK", "1", 1);
-	
-	void (*Java_com_aspyr_base_ASPYR_mainObbFileName)(void *env, int r1, char *filename) = (void *)so_symbol(&fahrenheit_mod, "Java_com_aspyr_base_ASPYR_mainObbFileName");
-	void (*Java_com_aspyr_base_ASPYR_patchObbFileName)(void *env, int r1, char *filename) = (void *)so_symbol(&fahrenheit_mod, "Java_com_aspyr_base_ASPYR_patchObbFileName");
-
-	Java_com_aspyr_base_ASPYR_mainObbFileName(fake_env, 0, "ux0:data/fahrenheit/main.obb");
-	Java_com_aspyr_base_ASPYR_patchObbFileName(fake_env, 0, "ux0:data/fahrenheit/patch.obb");
 
 	void (*Java_org_libsdl_app_SDLActivity_nativeInit)() = (void *)so_symbol(&fahrenheit_mod, "Java_org_libsdl_app_SDLActivity_nativeInit");
 	Java_org_libsdl_app_SDLActivity_nativeInit();
-	
+
 	return 0;
 }
