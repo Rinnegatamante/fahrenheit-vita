@@ -47,6 +47,7 @@
 #include "sha1.h"
 #include "libc_bridge.h"
 #include "fios.h"
+#include "trophies.h"
 
 #ifdef DEBUG
 #define dlog printf
@@ -1334,7 +1335,8 @@ enum MethodIDs {
 	GET_SCREEN_HEIGHT_PIXEL,
 	GET_SCREEN_HEIGHT_INCH,
 	GET_HIGH_RESOLUTION,
-	GET_CURRENT_LANGUAGE
+	GET_CURRENT_LANGUAGE,
+	UNLOCK_ACHIEVEMENT
 } MethodIDs;
 
 typedef struct {
@@ -1348,11 +1350,11 @@ static NameToMethodID name_to_method_ids[] = {
 	{ "GetScreenHeightInch", GET_SCREEN_HEIGHT_INCH },
 	{ "GetHighResolution", GET_HIGH_RESOLUTION },
 	{ "getCurrentLanguage", GET_CURRENT_LANGUAGE },
+	{ "unlockAchievement", UNLOCK_ACHIEVEMENT }
 };
 
 int GetMethodID(void *env, void *class, const char *name, const char *sig) {
 	//dlog("GetMethodID: %s\n", name);
-
 	for (int i = 0; i < sizeof(name_to_method_ids) / sizeof(NameToMethodID); i++) {
 		if (strcmp(name, name_to_method_ids[i].name) == 0) {
 			return name_to_method_ids[i].id;
@@ -1364,7 +1366,6 @@ int GetMethodID(void *env, void *class, const char *name, const char *sig) {
 
 int GetStaticMethodID(void *env, void *class, const char *name, const char *sig) {
 	//dlog("GetStaticMethodID: %s\n", name);
-	
 	for (int i = 0; i < sizeof(name_to_method_ids) / sizeof(NameToMethodID); i++) {
 		if (strcmp(name, name_to_method_ids[i].name) == 0)
 			return name_to_method_ids[i].id;
@@ -1374,6 +1375,16 @@ int GetStaticMethodID(void *env, void *class, const char *name, const char *sig)
 }
 
 void CallStaticVoidMethodV(void *env, void *obj, int methodID, uintptr_t *args) {
+	char *s;
+	switch (methodID) {
+	case UNLOCK_ACHIEVEMENT:
+		s = (char *)args[0];
+		int ach_id = atoi(&s[12]) + 1;
+		trophies_unlock(ach_id);
+		break;
+	default:
+		break;
+	}
 }
 
 int CallStaticBooleanMethodV(void *env, void *obj, int methodID, uintptr_t *args) {
@@ -1657,8 +1668,17 @@ int main(int argc, char *argv[]) {
 	if (r < 0)
 		fatal_error("Error could not initialize fios. (0x%08X)", r);
 	
-	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
+	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 16 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
 	//vglInitExtended(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X); // Debug (Has common dialog usable)
+	
+	// Initing trophy system
+	SceIoStat st;
+	r = trophies_init();
+	if (r < 0 && sceIoGetstat(TROPHIES_FILE, &st) < 0) {
+		FILE *f = fopen(TROPHIES_FILE, "w");
+		fclose(f);
+		warning("This game features unlockable trophies but NoTrpDrm is not installed. If you want to be able to unlock trophies, please install it.");
+	}
 	
 	memset(fake_vm, 'A', sizeof(fake_vm));
 	*(uintptr_t *)(fake_vm + 0x00) = (uintptr_t)fake_vm; // just point to itself...

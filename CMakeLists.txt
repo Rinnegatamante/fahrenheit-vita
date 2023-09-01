@@ -27,6 +27,7 @@ add_executable(Fahrenheit
   loader/ctype_patch.c
   loader/fnmatch.c
   loader/fios.c
+  loader/trophies.c
 )
 
 target_link_libraries(Fahrenheit
@@ -53,6 +54,7 @@ target_link_libraries(Fahrenheit
   mpg123
   taihen_stub
   kubridge_stub
+  SceIme_stub
   SceAppMgr_stub
   SceAppUtil_stub
   SceAudio_stub
@@ -71,6 +73,7 @@ target_link_libraries(Fahrenheit
   SceHid_stub
   SceVshBridge_stub
   SceKernelDmacmgr_stub
+  SceNpTrophy_stub
 )
 
 vita_create_self(eboot.bin Fahrenheit UNSAFE)
@@ -82,6 +85,7 @@ vita_create_vpk(Fahrenheit.vpk ${VITA_TITLEID} eboot.bin
        ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
        ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
        ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/template.xml sce_sys/livearea/contents/template.xml
+       ${CMAKE_SOURCE_DIR}/sce_sys/trophy/FAHR00001_00/TROPHY.TRP sce_sys/trophy/FAHR00001_00/TROPHY.TRP
 )
 
 add_custom_target(copy

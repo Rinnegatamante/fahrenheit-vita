@@ -86,7 +86,7 @@ Additionally, you'll need these libraries to be compiled as well with `-mfloat-a
 - [vitaGL](https://github.com/Rinnegatamante/vitaGL)
 
   - ````bash
-    make SOFTFP_ABI=1 HAVE_CUSTOM_HEAP=1 NO_DEBUG=1 install
+    make SOFTFP_ABI=1 NO_DEBUG=1 install
     ````
 
 After all these requirements are met, you can compile the loader with the following commands:
