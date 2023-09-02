@@ -9,6 +9,12 @@ By doing so, it's basically as if we emulate a minimalist Android environment in
 
 ## Changelog
 
+### v0.9
+
+- Improved overall renderer performances.
+- Updated to latest vitaGL commit.
+- Added trophies support.
+
 ### v0.8
 
 - Initial release.
