@@ -9,6 +9,10 @@ By doing so, it's basically as if we emulate a minimalist Android environment in
 
 ## Changelog
 
+### v0.9.1
+
+- Updated trophies icons to hi-res versions.
+
 ### v0.9
 
 - Improved overall renderer performances.
