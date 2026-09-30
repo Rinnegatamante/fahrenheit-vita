@@ -440,27 +440,27 @@ void Display2D(void *this) {
 
 void patch_game(void) {
 	if (ps2_mode)
-		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), ret0);
+		hook_addr(so_symbol(&fahrenheit_mod, "ktxLoadTextureM"), (uintptr_t)ret0);
 
 	//hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3KRN8I_OUTPUT4PushEPKcb"), QDT__KRN__I_OUTPUT__Push);
 
-	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset16"), sceClibMemset);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset32"), sceClibMemset);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset16"), (uintptr_t)sceClibMemset);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrmemset32"), (uintptr_t)sceClibMemset);
 
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreCreate"), rrSemaphoreCreate);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDestroy"), rrSemaphoreDestroy);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDecrementOrWait"), rrSemaphoreDecrementOrWait);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreIncrement"), rrSemaphoreIncrement);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreCreate"), (uintptr_t)rrSemaphoreCreate);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDestroy"), (uintptr_t)rrSemaphoreDestroy);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreDecrementOrWait"), (uintptr_t)rrSemaphoreDecrementOrWait);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrSemaphoreIncrement"), (uintptr_t)rrSemaphoreIncrement);
 
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexCreate"), rrMutexCreate);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexDestroy"), rrMutexDestroy);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLock"), rrMutexLock);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLockTimeout"), rrMutexLockTimeout);
-	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), rrMutexUnlock);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexCreate"), (uintptr_t)rrMutexCreate);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexDestroy"), (uintptr_t)rrMutexDestroy);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLock"), (uintptr_t)rrMutexLock);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexLockTimeout"), (uintptr_t)rrMutexLockTimeout);
+	hook_addr(so_symbol(&fahrenheit_mod, "rrMutexUnlock"), (uintptr_t)rrMutexUnlock);
 	
-	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), ret0);
-	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi9lookupVfsERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"), ret0);
-	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), Display2D);
+	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi3Obb7initVfsEv"), (uintptr_t)ret0);
+	hook_addr(so_symbol(&fahrenheit_mod, "_ZN3ASL5FsApi9lookupVfsERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"), (uintptr_t)ret0);
+	display2d_hook = hook_addr(so_symbol(&fahrenheit_mod, "_ZN3QDT3M3D15DISPLAY_MANAGER9Display2DEv"), (uintptr_t)Display2D);
 }
 
 extern void *__aeabi_atexit;
@@ -517,7 +517,7 @@ int fseek_hook(FILE *f, int dist, int off) {
 	if (f > 0x81000000)
 		return sceLibcBridge_fseek(f, dist, off);
 	
-	sceFiosFHSeek(f, dist, off);
+	sceFiosFHSeek((int32_t)(uintptr_t)f, dist, off);
 	return 0;
 }
 
@@ -525,7 +525,7 @@ long ftell_hook(FILE *f) {
 	if (f > 0x81000000)
 		return sceLibcBridge_ftell(f);
 	
-	return sceFiosFHTell(f);
+	return sceFiosFHTell((int32_t)(uintptr_t)f);
 }
 
 void fclose_hook(FILE *f) {
@@ -534,14 +534,14 @@ void fclose_hook(FILE *f) {
 		return;
 	}
 
-	sceFiosFHCloseSync(NULL, f);
+	sceFiosFHCloseSync(NULL, (int32_t)(uintptr_t)f);
 }
 
 size_t fread_hook(void *p, size_t size, size_t num, FILE *f) {
 	if (f > 0x81000000)
 		return sceLibcBridge_fread(p, size, num, f);
 
-	sceFiosFHReadSync(NULL, f, p, size * num);
+	sceFiosFHReadSync(NULL, (int32_t)(uintptr_t)f, p, size * num);
 	return num;
 }
 
@@ -550,10 +550,11 @@ FILE *fopen_hook(char *fname, char *mode) {
 	char real_fname[256];
 	if (psarc_exists && !strncmp(fname, "textures/", 9)) {
 		sprintf(real_fname, "%c%s", '/', fname);
-		if (sceFiosFHOpenSync(NULL, &f, real_fname, NULL)) {
+		int32_t handle;
+		if (sceFiosFHOpenSync(NULL, &handle, real_fname, NULL)) {
 			dlog("Textures not found inside the PSARC!!! %s\n", fname);
 		} else {
-			return f;
+			return (FILE *)(uintptr_t)handle;
 		}
 	}
 	if (strncmp(fname, "ux0:", 4)) {
@@ -706,7 +707,8 @@ void glShaderSource_fake(GLuint shader, GLsizei count, const GLchar **string, co
 		fclose(file);
 		*/
 		//dlog("Compiling resulting shader\n");
-		glShaderSource(shader, 1, &tmp2, NULL);
+		const GLchar *shader_source = tmp2;
+		glShaderSource(shader, 1, &shader_source, NULL);
 		glCompileShader(shader);
 		vglGetShaderBinary(shader, 0x8000, &shaderSize, tmp2);
 		file = sceLibcBridge_fopen(gxp_path, "w+");

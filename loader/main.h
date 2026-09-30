@@ -10,6 +10,7 @@ extern so_module fahrenheit_mod;
 int debugPrintf(char *text, ...);
 
 int ret0();
+int file_exists(const char *path);
 
 int sceKernelChangeThreadCpuAffinityMask(SceUID thid, int cpuAffinityMask);
 

@@ -6,6 +6,7 @@
  * of the MIT license.	See the LICENSE file for details.
  */
 
+#include <psp2/kernel/clib.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>

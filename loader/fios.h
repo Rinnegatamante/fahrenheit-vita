@@ -85,6 +85,11 @@ void sceFiosIOFilterCache();
 void sceFiosIOFilterPsarcDearchiver();
 int64_t sceFiosFHReadSync(void *attr, int32_t fh, void *pBuf, int64_t length);
 int64_t sceFiosFHSeek(int32_t fh, int64_t offset, int32_t whence);
+int sceFiosFHOpenSync(const void *attr, int32_t *fh, const char *path, const void *params);
+int sceFiosFHCloseSync(const void *attr, int32_t fh);
+int64_t sceFiosFHTell(int32_t fh);
+int64_t sceFiosArchiveGetMountBufferSizeSync(const void *attr, const char *path, const void *params);
+int sceFiosArchiveMountSync(const void *attr, int32_t *fh, const char *path, const char *mountpoint, SceFiosBuffer buffer, const void *params);
 
 int fios_init(void);
 
