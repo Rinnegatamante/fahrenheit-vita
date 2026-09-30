@@ -10,6 +10,23 @@ endif()
 
 project(Fahrenheit C CXX)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FAHRENHEIT_MEDIA REQUIRED SDL2_mixer SDL2_image sndfile vorbisfile)
+find_program(VITA_LIBS_GEN_EXECUTABLE NAMES vita-libs-gen HINTS "${VITASDK}/bin")
+if(NOT VITA_LIBS_GEN_EXECUTABLE)
+  message(FATAL_ERROR "vita-libs-gen is required to build the libc bridge")
+endif()
+set(LIBC_BRIDGE_DIR "${CMAKE_CURRENT_BINARY_DIR}/libc_bridge")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/libc_bridge/nids.yml")
+execute_process(
+  COMMAND "${VITA_LIBS_GEN_EXECUTABLE}" -c "${CMAKE_CURRENT_SOURCE_DIR}/libc_bridge/nids.yml" "${LIBC_BRIDGE_DIR}"
+  RESULT_VARIABLE LIBC_BRIDGE_RESULT
+)
+if(NOT LIBC_BRIDGE_RESULT EQUAL 0)
+  message(FATAL_ERROR "libc bridge stub generation failed: ${LIBC_BRIDGE_RESULT}")
+endif()
+add_subdirectory("${LIBC_BRIDGE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/libc_bridge-build")
+
 set(VITA_APP_NAME "Fahrenheit")
 set(VITA_TITLEID  "FAHRENEIT")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
@@ -30,15 +47,20 @@ add_executable(Fahrenheit
   loader/trophies.c
 )
 
+set_target_properties(Fahrenheit PROPERTIES LINKER_LANGUAGE CXX C_STANDARD 17 C_STANDARD_REQUIRED YES C_EXTENSIONS YES)
+target_compile_options(Fahrenheit PRIVATE ${FAHRENHEIT_MEDIA_STATIC_CFLAGS})
+
 target_link_libraries(Fahrenheit
-  -Wl,--whole-archive pthread -Wl,--no-whole-archive
+  -pthread
+  -Wl,--start-group
+  ${FAHRENHEIT_MEDIA_STATIC_LDFLAGS}
   SDL2_mixer
   SDL2_image
   SDL2
   z
   m
   stdc++
-  opensles
+  OpenSLES
   sndfile
   vorbis
   vorbisenc
@@ -72,8 +94,9 @@ target_link_libraries(Fahrenheit
   SceMotion_stub
   SceHid_stub
   SceVshBridge_stub
-  SceKernelDmacmgr_stub
+  SceKernelDmacMgr_stub
   SceNpTrophy_stub
+  -Wl,--end-group
 )
 
 vita_create_self(eboot.bin Fahrenheit UNSAFE)
@@ -92,3 +115,6 @@ add_custom_target(copy
   COMMAND cp eboot.bin D:/app/${VITA_TITLEID}/eboot.bin
   DEPENDS eboot.bin
 )
+
+# Keep legacy invalid returns diagnostic-only instead of inventing results.
+set_property(SOURCE loader/so_util.c APPEND PROPERTY COMPILE_OPTIONS -Wno-error=return-mismatch -Wno-error=incompatible-pointer-types)
